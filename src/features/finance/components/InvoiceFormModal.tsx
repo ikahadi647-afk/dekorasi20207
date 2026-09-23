@@ -1,0 +1,652 @@
+import React, { useState } from 'react';
+import { Project, Client, Package, PaymentStatus, Profile } from '../../../types';
+import Modal from '../../../shared/ui/Modal';
+import RupiahInput from '../../../shared/form/RupiahInput';
+import { useInvoiceFormModal } from '../hooks/useInvoiceFormModal';
+import InvoiceLineItemsEditor from './InvoiceLineItemsEditor';
+import InvoicePreviewModal from './InvoicePreviewModal';
+import {
+  FileText,
+  User,
+  Calendar,
+  MapPin,
+  DollarSign,
+  Percent,
+  CheckCircle2,
+  AlertCircle,
+  Loader2,
+  Tag,
+  Building,
+  Eye,
+} from 'lucide-react';
+
+interface InvoiceFormModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  projectToEdit?: Project | null;
+  clients: Client[];
+  packages: Package[];
+  userProfile?: Profile;
+  showNotification: (msg: string) => void;
+  onSuccess: (savedProject: Project, newTransaction?: any) => void;
+}
+
+const formatCurrency = (val: number) =>
+  new Intl.NumberFormat('id-ID', {
+    style: 'currency',
+    currency: 'IDR',
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
+  }).format(val || 0);
+
+const PROJECT_TYPES = [
+  'Wedding',
+  'Pre-Wedding',
+  'Engagement',
+  'Akad Saja',
+  'Resepsi Saja',
+  'Event & Party',
+  'Birthday',
+  'Wisuda',
+  'Corporate',
+  'Portrait & Studio',
+  'Commercial / Brand',
+  'Lainnya',
+];
+
+export const InvoiceFormModal: React.FC<InvoiceFormModalProps> = ({
+  isOpen,
+  onClose,
+  projectToEdit,
+  clients,
+  packages,
+  userProfile,
+  showNotification,
+  onSuccess,
+}) => {
+  const [isPreviewOpen, setIsPreviewOpen] = useState(false);
+
+  const {
+    formData,
+    isSubmitting,
+    errorMsg,
+    handleFieldChange,
+    handleClientSelect,
+    handleAddLineItem,
+    handleUpdateLineItem,
+    handleRemoveLineItem,
+    handleSubmit,
+  } = useInvoiceFormModal({
+    isOpen,
+    projectToEdit,
+    clients,
+    packages,
+    showNotification,
+    onSuccess: (project, newTx) => {
+      onSuccess(project, newTx);
+      onClose();
+    },
+  });
+
+  const isEditMode = Boolean(formData.id);
+  const modalTitle = isEditMode
+    ? `Edit Invoice: ${formData.invoiceNumber || formData.title || 'Invoice'}`
+    : 'Buat Invoice Manual Baru';
+
+  const balanceDue = Math.max(0, formData.grandTotal - formData.amountPaid);
+
+  const handleOpenPreview = () => {
+    const hasClient = formData.isNewClient
+      ? Boolean(formData.clientName.trim())
+      : Boolean(formData.clientId || formData.clientName.trim());
+
+    if (!hasClient) {
+      showNotification('Silakan pilih atau masukkan nama klien terlebih dahulu untuk melihat pratinjau.');
+      return;
+    }
+
+    if (formData.lineItems.length === 0) {
+      showNotification('Tambahkan minimal 1 item layanan untuk melihat pratinjau.');
+      return;
+    }
+
+    setIsPreviewOpen(true);
+  };
+
+  return (
+    <Modal isOpen={isOpen} onClose={onClose} title={modalTitle} size="4xl">
+      <form onSubmit={handleSubmit} className="space-y-6">
+        {/* Error Notification */}
+        {errorMsg && (
+          <div className="p-3.5 bg-red-500/10 border border-red-500/30 rounded-xl flex items-center gap-2.5 text-red-500 text-xs font-semibold">
+            <AlertCircle className="w-4 h-4 shrink-0" />
+            <span>{errorMsg}</span>
+          </div>
+        )}
+
+        {/* Quick Preview & Guidance Bar */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3 bg-brand-surface rounded-xl border border-brand-border">
+          <p className="text-xs text-brand-text-secondary">
+            Lengkapi data tagihan di bawah, lalu klik <span className="font-bold text-brand-text-primary">Pratinjau Invoice</span> untuk melihat dokumen read-only sebelum difinalisasi.
+          </p>
+          <button
+            type="button"
+            onClick={handleOpenPreview}
+            className="inline-flex items-center justify-center gap-1.5 px-3.5 py-1.5 rounded-lg border border-brand-accent/30 bg-brand-accent/10 hover:bg-brand-accent/20 text-brand-accent text-xs font-bold transition-all shrink-0 self-start sm:self-center"
+          >
+            <Eye className="w-3.5 h-3.5" />
+            <span>Pratinjau Invoice</span>
+          </button>
+        </div>
+
+        {/* Section 1: Informasi Klien */}
+        <div className="bg-brand-surface rounded-2xl p-4 sm:p-5 border border-brand-border space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-brand-border pb-3">
+            <div className="flex items-center gap-2">
+              <User className="w-4 h-4 text-brand-accent shrink-0" />
+              <h4 className="text-sm font-bold text-brand-text-primary">
+                Informasi Klien / Penerima Tagihan
+              </h4>
+            </div>
+
+            {/* Toggle Existing vs New Client */}
+            {!isEditMode && (
+              <div className="inline-flex p-0.5 rounded-xl bg-brand-bg border border-brand-border self-start">
+                <button
+                  type="button"
+                  onClick={() => handleFieldChange('isNewClient', false)}
+                  className={`px-3 py-1 text-xs font-bold rounded-lg transition-all ${
+                    !formData.isNewClient
+                      ? 'bg-brand-surface text-brand-accent shadow-sm'
+                      : 'text-brand-text-secondary hover:text-brand-text-primary'
+                  }`}
+                >
+                  Pilih Klien Terdaftar
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleFieldChange('isNewClient', true)}
+                  className={`px-3 py-1 text-xs font-bold rounded-lg transition-all ${
+                    formData.isNewClient
+                      ? 'bg-brand-surface text-brand-accent shadow-sm'
+                      : 'text-brand-text-secondary hover:text-brand-text-primary'
+                  }`}
+                >
+                  + Klien Baru
+                </button>
+              </div>
+            )}
+          </div>
+
+          {!formData.isNewClient ? (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="space-y-1.5 sm:col-span-2">
+                <label className="text-xs font-semibold text-brand-text-secondary">
+                  Nama Klien Terdaftar <span className="text-red-400">*</span>
+                </label>
+                <select
+                  value={formData.clientId}
+                  onChange={(e) => handleClientSelect(e.target.value)}
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-brand-border bg-brand-surface text-brand-text-primary text-xs focus:outline-none focus:ring-2 focus:ring-brand-accent/40 font-medium"
+                  required
+                >
+                  <option value="">-- Pilih Klien --</option>
+                  {clients.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name} {c.phone ? `(${c.phone})` : ''}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {formData.clientId && (
+                <>
+                  <div className="space-y-1">
+                    <span className="text-[11px] font-semibold text-brand-text-secondary">No. Telepon / WhatsApp:</span>
+                    <p className="text-xs font-bold text-brand-text-primary">{formData.clientPhone || '-'}</p>
+                  </div>
+                  <div className="space-y-1">
+                    <span className="text-[11px] font-semibold text-brand-text-secondary">Email:</span>
+                    <p className="text-xs font-bold text-brand-text-primary">{formData.clientEmail || '-'}</p>
+                  </div>
+                  {formData.clientAddress && (
+                    <div className="space-y-1 sm:col-span-2">
+                      <span className="text-[11px] font-semibold text-brand-text-secondary">Alamat:</span>
+                      <p className="text-xs font-medium text-brand-text-primary">{formData.clientAddress}</p>
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+              <div className="space-y-1.5 sm:col-span-2">
+                <label className="text-xs font-semibold text-brand-text-secondary">
+                  Nama Lengkap Klien <span className="text-red-400">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={formData.clientName}
+                  onChange={(e) => handleFieldChange('clientName', e.target.value)}
+                  placeholder="Contoh: Sarah & Dimas"
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-brand-border bg-brand-surface text-brand-text-primary text-xs focus:outline-none focus:ring-2 focus:ring-brand-accent/40 font-medium"
+                  required
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-brand-text-secondary">
+                  No. WhatsApp / HP
+                </label>
+                <input
+                  type="text"
+                  value={formData.clientPhone}
+                  onChange={(e) => handleFieldChange('clientPhone', e.target.value)}
+                  placeholder="08123456789"
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-brand-border bg-brand-surface text-brand-text-primary text-xs focus:outline-none focus:ring-2 focus:ring-brand-accent/40 font-medium"
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-brand-text-secondary">
+                  Email
+                </label>
+                <input
+                  type="email"
+                  value={formData.clientEmail}
+                  onChange={(e) => handleFieldChange('clientEmail', e.target.value)}
+                  placeholder="klien@example.com"
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-brand-border bg-brand-surface text-brand-text-primary text-xs focus:outline-none focus:ring-2 focus:ring-brand-accent/40 font-medium"
+                />
+              </div>
+
+              <div className="space-y-1.5 sm:col-span-2">
+                <label className="text-xs font-semibold text-brand-text-secondary">
+                  Alamat Klien
+                </label>
+                <input
+                  type="text"
+                  value={formData.clientAddress}
+                  onChange={(e) => handleFieldChange('clientAddress', e.target.value)}
+                  placeholder="Alamat domisili / pengiriman album"
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-brand-border bg-brand-surface text-brand-text-primary text-xs focus:outline-none focus:ring-2 focus:ring-brand-accent/40 font-medium"
+                />
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Section 2: Informasi Invoice & Acara */}
+        <div className="bg-brand-surface rounded-2xl p-4 sm:p-5 border border-brand-border space-y-4">
+          <div className="flex items-center gap-2 border-b border-brand-border pb-3">
+            <FileText className="w-4 h-4 text-brand-accent shrink-0" />
+            <h4 className="text-sm font-bold text-brand-text-primary">
+              Informasi Proyek & Tanggal Acara
+            </h4>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+            <div className="space-y-1.5 sm:col-span-2">
+              <label className="text-xs font-semibold text-brand-text-secondary">
+                Judul Invoice / Nama Proyek <span className="text-red-400">*</span>
+              </label>
+              <input
+                type="text"
+                value={formData.title}
+                onChange={(e) => handleFieldChange('title', e.target.value)}
+                placeholder="Contoh: Wedding Sarah & Dimas (atau Liputan Dokumentasi)"
+                className="w-full px-3.5 py-2.5 rounded-xl border border-brand-border bg-brand-surface text-brand-text-primary text-xs focus:outline-none focus:ring-2 focus:ring-brand-accent/40 font-medium"
+                required
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold text-brand-text-secondary">
+                Tipe Layanan
+              </label>
+              <select
+                value={formData.projectType}
+                onChange={(e) => handleFieldChange('projectType', e.target.value)}
+                className="w-full px-3.5 py-2.5 rounded-xl border border-brand-border bg-brand-surface text-brand-text-primary text-xs focus:outline-none focus:ring-2 focus:ring-brand-accent/40 font-medium"
+              >
+                {PROJECT_TYPES.map((type) => (
+                  <option key={type} value={type}>
+                    {type}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold text-brand-text-secondary">
+                Nomor Invoice
+              </label>
+              <input
+                type="text"
+                value={formData.invoiceNumber || 'Otomatis di-generate sistem'}
+                disabled
+                className="w-full px-3.5 py-2.5 rounded-xl border border-brand-border bg-brand-bg text-brand-text-secondary text-xs font-mono"
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold text-brand-text-secondary">
+                Tanggal Terbit Invoice <span className="text-red-400">*</span>
+              </label>
+              <div className="relative">
+                <input
+                  type="date"
+                  value={formData.invoiceDate}
+                  onChange={(e) => handleFieldChange('invoiceDate', e.target.value)}
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-brand-border bg-brand-surface text-brand-text-primary text-xs focus:outline-none focus:ring-2 focus:ring-brand-accent/40 font-medium"
+                  required
+                />
+              </div>
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold text-brand-text-secondary">
+                Tanggal Acara / Jatuh Tempo
+              </label>
+              <div className="relative">
+                <input
+                  type="date"
+                  value={formData.eventDate}
+                  onChange={(e) => handleFieldChange('eventDate', e.target.value)}
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-brand-border bg-brand-surface text-brand-text-primary text-xs focus:outline-none focus:ring-2 focus:ring-brand-accent/40 font-medium"
+                />
+              </div>
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold text-brand-text-secondary">
+                Lokasi / Venue Acara
+              </label>
+              <input
+                type="text"
+                value={formData.location}
+                onChange={(e) => handleFieldChange('location', e.target.value)}
+                placeholder="Contoh: Hotel Mulia Senayan / Gedung Graha Sabha"
+                className="w-full px-3.5 py-2.5 rounded-xl border border-brand-border bg-brand-surface text-brand-text-primary text-xs focus:outline-none focus:ring-2 focus:ring-brand-accent/40 font-medium"
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold text-brand-text-secondary">
+                Detail Alamat / Kota
+              </label>
+              <input
+                type="text"
+                value={formData.address}
+                onChange={(e) => handleFieldChange('address', e.target.value)}
+                placeholder="Jl. Gatot Subroto No. 1, Jakarta"
+                className="w-full px-3.5 py-2.5 rounded-xl border border-brand-border bg-brand-surface text-brand-text-primary text-xs focus:outline-none focus:ring-2 focus:ring-brand-accent/40 font-medium"
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* Section 3: Rincian Item Layanan (Line Items Editor) */}
+        <div className="bg-brand-surface rounded-2xl p-4 sm:p-5 border border-brand-border">
+          <InvoiceLineItemsEditor
+            items={formData.lineItems}
+            onAddItem={handleAddLineItem}
+            onUpdateItem={handleUpdateLineItem}
+            onRemoveItem={handleRemoveLineItem}
+            packages={packages}
+          />
+        </div>
+
+        {/* Section 4: Biaya Tambahan & Diskon */}
+        <div className="bg-brand-surface rounded-2xl p-4 sm:p-5 border border-brand-border space-y-4">
+          <div className="flex items-center gap-2 border-b border-brand-border pb-3">
+            <Tag className="w-4 h-4 text-brand-accent shrink-0" />
+            <h4 className="text-sm font-bold text-brand-text-primary">
+              Biaya Tambahan & Diskon
+            </h4>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {/* Biaya Transport */}
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold text-brand-text-secondary">
+                Biaya Transportasi / Akomodasi (Rp)
+              </label>
+              <RupiahInput
+                value={String(formData.transportCost || '')}
+                onChange={(raw) => handleFieldChange('transportCost', Number(raw) || 0)}
+                placeholder="0"
+                className="w-full px-3.5 py-2.5 rounded-xl border border-brand-border bg-brand-surface text-brand-text-primary text-xs font-medium focus:outline-none focus:ring-2 focus:ring-brand-accent/40"
+              />
+              <p className="text-[11px] text-brand-text-secondary">
+                Biaya bensin, tol, atau perjalanan luar kota jika ada
+              </p>
+            </div>
+
+            {/* Diskon */}
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-semibold text-brand-text-secondary">
+                  Potongan Harga / Diskon
+                </label>
+                <div className="inline-flex rounded-lg border border-brand-border bg-brand-bg p-0.5 text-[11px] font-bold">
+                  <button
+                    type="button"
+                    onClick={() => handleFieldChange('discountType', 'fixed')}
+                    className={`px-2 py-0.5 rounded transition-all ${
+                      formData.discountType === 'fixed'
+                        ? 'bg-brand-surface text-brand-accent shadow-sm'
+                        : 'text-brand-text-secondary'
+                    }`}
+                  >
+                    Rp
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleFieldChange('discountType', 'percentage')}
+                    className={`px-2 py-0.5 rounded transition-all ${
+                      formData.discountType === 'percentage'
+                        ? 'bg-brand-surface text-brand-accent shadow-sm'
+                        : 'text-brand-text-secondary'
+                    }`}
+                  >
+                    %
+                  </button>
+                </div>
+              </div>
+
+              {formData.discountType === 'percentage' ? (
+                <div className="relative">
+                  <input
+                    type="number"
+                    min="0"
+                    max="100"
+                    value={formData.discountValue || ''}
+                    onChange={(e) => handleFieldChange('discountValue', Number(e.target.value) || 0)}
+                    placeholder="0"
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-brand-border bg-brand-surface text-brand-text-primary text-xs font-medium focus:outline-none focus:ring-2 focus:ring-brand-accent/40"
+                  />
+                  <div className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold text-brand-text-secondary">
+                    % ({formatCurrency(formData.discountAmount)})
+                  </div>
+                </div>
+              ) : (
+                <RupiahInput
+                  value={String(formData.discountValue || '')}
+                  onChange={(raw) => handleFieldChange('discountValue', Number(raw) || 0)}
+                  placeholder="0"
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-brand-border bg-brand-surface text-brand-text-primary text-xs font-medium focus:outline-none focus:ring-2 focus:ring-brand-accent/40"
+                />
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Section 5: Ringkasan Total & Pembayaran Awal */}
+        <div className="bg-brand-surface rounded-2xl p-4 sm:p-5 border border-brand-border space-y-4">
+          <div className="flex items-center gap-2 border-b border-brand-border pb-3">
+            <DollarSign className="w-4 h-4 text-brand-accent shrink-0" />
+            <h4 className="text-sm font-bold text-brand-text-primary">
+              Ringkasan Pembayaran & Status
+            </h4>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {/* Input Pembayaran Awal / DP */}
+            <div className="space-y-4">
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-brand-text-secondary">
+                  Sudah Dibayar / Uang Muka (DP) (Rp)
+                </label>
+                <RupiahInput
+                  value={String(formData.amountPaid || '')}
+                  onChange={(raw) => handleFieldChange('amountPaid', Number(raw) || 0)}
+                  placeholder="0"
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-brand-border bg-brand-surface text-brand-text-primary text-xs font-medium focus:outline-none focus:ring-2 focus:ring-brand-accent/40"
+                />
+                <p className="text-[11px] text-brand-text-secondary">
+                  Masukkan nominal jika klien telah menyetor DP saat invoice dibuat
+                </p>
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-brand-text-secondary">
+                  Status Pembayaran
+                </label>
+                <select
+                  value={formData.paymentStatus}
+                  onChange={(e) => handleFieldChange('paymentStatus', e.target.value as PaymentStatus)}
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-brand-border bg-brand-surface text-brand-text-primary text-xs font-bold focus:outline-none focus:ring-2 focus:ring-brand-accent/40"
+                >
+                  <option value={PaymentStatus.BELUM_BAYAR}>Belum Bayar (Unpaid)</option>
+                  <option value={PaymentStatus.DP_TERBAYAR}>DP Terbayar (Partial Paid)</option>
+                  <option value={PaymentStatus.LUNAS}>Lunas (Paid in Full)</option>
+                </select>
+              </div>
+            </div>
+
+            {/* Financial Summary Card */}
+            <div className="p-4 rounded-xl bg-brand-bg/60 border border-brand-border space-y-2.5 text-xs">
+              <div className="flex justify-between items-center text-brand-text-secondary">
+                <span>Subtotal Item Layanan:</span>
+                <span className="font-semibold text-brand-text-primary">
+                  {formatCurrency(formData.subtotal - (formData.transportCost || 0))}
+                </span>
+              </div>
+
+              {formData.transportCost > 0 && (
+                <div className="flex justify-between items-center text-brand-text-secondary">
+                  <span>Biaya Transportasi:</span>
+                  <span className="font-semibold text-brand-text-primary">
+                    +{formatCurrency(formData.transportCost)}
+                  </span>
+                </div>
+              )}
+
+              {formData.discountAmount > 0 && (
+                <div className="flex justify-between items-center text-emerald-600 font-medium">
+                  <span>Diskon Potongan:</span>
+                  <span>-{formatCurrency(formData.discountAmount)}</span>
+                </div>
+              )}
+
+              <div className="border-t border-brand-border/80 pt-2 flex justify-between items-center">
+                <span className="text-sm font-bold text-brand-text-primary">Grand Total Tagihan:</span>
+                <span className="text-base font-black text-brand-accent">
+                  {formatCurrency(formData.grandTotal)}
+                </span>
+              </div>
+
+              <div className="flex justify-between items-center text-brand-text-secondary">
+                <span>Sudah Dibayar:</span>
+                <span className="font-semibold text-emerald-600">
+                  {formatCurrency(formData.amountPaid)}
+                </span>
+              </div>
+
+              <div className="border-t border-brand-border/60 pt-2 flex justify-between items-center font-bold">
+                <span className="text-slate-700">Sisa Tagihan:</span>
+                <span className={balanceDue > 0 ? 'text-red-500 font-black' : 'text-emerald-600'}>
+                  {formatCurrency(balanceDue)}
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Section 6: Catatan / Syarat & Ketentuan */}
+        <div className="bg-brand-surface rounded-2xl p-4 sm:p-5 border border-brand-border space-y-3">
+          <label className="block text-xs font-bold text-brand-text-primary">
+            Catatan Invoice / Ketentuan Pembayaran
+          </label>
+          <textarea
+            rows={3}
+            value={formData.notes}
+            onChange={(e) => handleFieldChange('notes', e.target.value)}
+            placeholder="Ketentuan transfer, nomor rekening, atau catatan khusus untuk klien..."
+            className="w-full px-3.5 py-2.5 rounded-xl border border-brand-border bg-brand-surface text-brand-text-primary text-xs focus:outline-none focus:ring-2 focus:ring-brand-accent/40 font-medium leading-relaxed"
+          />
+        </div>
+
+        {/* Modal Actions Footer */}
+        <div className="flex flex-col-reverse sm:flex-row sm:justify-between items-center gap-3 pt-4 border-t border-brand-border">
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={isSubmitting}
+            className="button-secondary w-full sm:w-auto px-5 py-2.5 text-xs font-bold"
+          >
+            Batal
+          </button>
+
+          <div className="flex flex-col sm:flex-row items-center gap-2.5 w-full sm:w-auto">
+            <button
+              type="button"
+              onClick={handleOpenPreview}
+              disabled={isSubmitting}
+              className="button-secondary w-full sm:w-auto px-4 py-2.5 text-xs font-bold flex items-center justify-center gap-2 border-brand-accent/40 text-brand-accent hover:bg-brand-accent/10 transition-colors"
+              title="Lihat tampilan dokumen invoice sebelum finalisasi"
+            >
+              <Eye className="w-4 h-4" />
+              <span>Pratinjau Invoice</span>
+            </button>
+
+            <button
+              type="submit"
+              disabled={isSubmitting}
+              className="button-primary w-full sm:w-auto px-6 py-2.5 text-xs font-bold shadow-lg flex items-center justify-center gap-1.5"
+            >
+              {isSubmitting ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin mr-1.5" />
+                  <span>Menyimpan Invoice...</span>
+                </>
+              ) : (
+                <>
+                  <CheckCircle2 className="w-4 h-4 mr-1.5" />
+                  <span>{isEditMode ? 'Simpan Perubahan' : 'Buat Invoice Sekarang'}</span>
+                </>
+              )}
+            </button>
+          </div>
+        </div>
+      </form>
+
+      {/* ── Read-Only Invoice Preview Modal ──────────────────────────── */}
+      <InvoicePreviewModal
+        isOpen={isPreviewOpen}
+        onClose={() => setIsPreviewOpen(false)}
+        onConfirmFinalize={() => {
+          setIsPreviewOpen(false);
+          handleSubmit();
+        }}
+        isSubmitting={isSubmitting}
+        formData={formData}
+        profile={userProfile}
+        isEditMode={isEditMode}
+      />
+    </Modal>
+  );
+};
+
+export default InvoiceFormModal;

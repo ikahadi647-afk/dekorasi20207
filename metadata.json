@@ -1,0 +1,8 @@
+{
+  "name": "Weddfin",
+  "description": "Imported from GitHub: weddfin-cyber/weddfin",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

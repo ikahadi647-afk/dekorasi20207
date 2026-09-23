@@ -1,0 +1,494 @@
+import { useState, useEffect, useCallback, useMemo } from 'react';
+import { Project, Client, Package, PaymentStatus, TransactionType, Transaction } from '../../../types';
+import { InvoiceFormData, InvoiceLineItem } from '../types/invoiceForm';
+import { createProject, updateProject, getProjectWithRelations } from '../../../services/projects';
+import { createClient } from '../../../services/clients';
+import { createTransaction } from '../../../services/transactions';
+
+interface UseInvoiceFormModalProps {
+  isOpen: boolean;
+  projectToEdit?: Project | null;
+  clients: Client[];
+  packages: Package[];
+  showNotification: (msg: string) => void;
+  onSuccess: (savedProject: Project, newTransaction?: Transaction) => void;
+}
+
+const getTodayIsoDate = () => new Date().toISOString().split('T')[0];
+
+const generateId = () => Math.random().toString(36).substring(2, 9);
+
+export function useInvoiceFormModal({
+  isOpen,
+  projectToEdit,
+  clients,
+  packages,
+  showNotification,
+  onSuccess,
+}: UseInvoiceFormModalProps) {
+  const [formData, setFormData] = useState<InvoiceFormData>(() => createInitialState(projectToEdit, clients));
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
+  // Helper to construct initial state
+  function createInitialState(editProj?: Project | null, clientList: Client[] = []): InvoiceFormData {
+    if (editProj) {
+      const client = clientList.find((c) => c.id === editProj.clientId);
+      const lineItems: InvoiceLineItem[] = [];
+
+      // Reconstruct line items from editProj
+      const subtotal = editProj.totalCost + (editProj.discountAmount || 0);
+      const addOnsTotal = (editProj.addOns || []).reduce((acc, curr) => acc + (curr.price || 0), 0);
+      const customCostsTotal = (editProj.customCosts || []).reduce((acc, curr) => acc + (curr.amount || 0), 0);
+      const primaryItemPrice = Math.max(0, subtotal - addOnsTotal - (Number(editProj.transportCost) || 0) - customCostsTotal);
+
+      // 1. Primary package / service line item
+      lineItems.push({
+        id: generateId(),
+        description: editProj.packageName || editProj.projectName || 'Layanan Utama',
+        quantity: 1,
+        unitPrice: primaryItemPrice,
+        totalPrice: primaryItemPrice,
+        sourceType: 'package',
+      });
+
+      // 2. Add-ons as line items
+      (editProj.addOns || []).forEach((ao) => {
+        lineItems.push({
+          id: ao.id || generateId(),
+          description: ao.name,
+          quantity: 1,
+          unitPrice: ao.price || 0,
+          totalPrice: ao.price || 0,
+          sourceType: 'addon',
+          originalAddOnId: ao.id,
+        });
+      });
+
+      // 3. Custom costs as line items
+      (editProj.customCosts || []).forEach((cc) => {
+        lineItems.push({
+          id: cc.id || generateId(),
+          description: cc.description,
+          quantity: 1,
+          unitPrice: cc.amount || 0,
+          totalPrice: cc.amount || 0,
+          sourceType: 'custom',
+        });
+      });
+
+      const lineItemsSum = lineItems.reduce((s, it) => s + it.totalPrice, 0);
+      const tCost = Number(editProj.transportCost) || 0;
+      const dAmount = Number(editProj.discountAmount) || 0;
+
+      return {
+        id: editProj.id,
+        invoiceNumber: `INV-${editProj.id.slice(-8).toUpperCase()}`,
+        isNewClient: false,
+        clientId: editProj.clientId || '',
+        clientName: editProj.clientName || client?.name || '',
+        clientPhone: client?.phone || client?.whatsapp || '',
+        clientEmail: client?.email || '',
+        clientAddress: editProj.address || client?.address || '',
+        title: editProj.projectName || '',
+        projectType: editProj.projectType || 'Wedding',
+        invoiceDate: editProj.date ? editProj.date.split('T')[0] : getTodayIsoDate(),
+        eventDate: editProj.deadlineDate ? editProj.deadlineDate.split('T')[0] : (editProj.date ? editProj.date.split('T')[0] : getTodayIsoDate()),
+        location: editProj.location || '',
+        address: editProj.address || '',
+        lineItems: lineItems.length > 0 ? lineItems : [
+          { id: generateId(), description: 'Jasa Dokumentasi Fotografi & Videografi', quantity: 1, unitPrice: 0, totalPrice: 0 }
+        ],
+        transportCost: tCost,
+        discountType: 'fixed',
+        discountValue: dAmount,
+        discountAmount: dAmount,
+        subtotal: lineItemsSum + tCost,
+        grandTotal: editProj.totalCost,
+        amountPaid: editProj.amountPaid || 0,
+        paymentStatus: editProj.paymentStatus || PaymentStatus.BELUM_BAYAR,
+        notes: editProj.notes || '',
+      };
+    }
+
+    // Default new invoice state
+    return {
+      isNewClient: false,
+      clientId: clientList[0]?.id || '',
+      clientName: clientList[0]?.name || '',
+      clientPhone: clientList[0]?.phone || clientList[0]?.whatsapp || '',
+      clientEmail: clientList[0]?.email || '',
+      clientAddress: clientList[0]?.address || '',
+      title: '',
+      projectType: 'Wedding',
+      invoiceDate: getTodayIsoDate(),
+      eventDate: getTodayIsoDate(),
+      location: '',
+      address: '',
+      lineItems: [
+        {
+          id: generateId(),
+          description: 'Jasa Liputan & Dokumentasi',
+          quantity: 1,
+          unitPrice: 0,
+          totalPrice: 0,
+        },
+      ],
+      transportCost: 0,
+      discountType: 'fixed',
+      discountValue: 0,
+      discountAmount: 0,
+      subtotal: 0,
+      grandTotal: 0,
+      amountPaid: 0,
+      paymentStatus: PaymentStatus.BELUM_BAYAR,
+      notes: 'Pembayaran DP minimal 30% dari total tagihan. Pelunasan paling lambat H-3 sebelum tanggal acara.',
+    };
+  }
+
+  // Reset/re-initialize when modal opens or target project changes
+  useEffect(() => {
+    if (isOpen) {
+      setFormData(createInitialState(projectToEdit, clients));
+      setErrorMsg(null);
+    }
+  }, [isOpen, projectToEdit]);
+
+  // Recalculate totals whenever items, transport, or discount changes
+  const recalculate = useCallback((data: InvoiceFormData): InvoiceFormData => {
+    // 1. Line items subtotal
+    const updatedLineItems = data.lineItems.map((item) => ({
+      ...item,
+      totalPrice: (Number(item.quantity) || 1) * (Number(item.unitPrice) || 0),
+    }));
+
+    const lineItemsSubtotal = updatedLineItems.reduce((sum, it) => sum + it.totalPrice, 0);
+    const transport = Number(data.transportCost) || 0;
+    const subtotal = lineItemsSubtotal + transport;
+
+    // 2. Discount calculation
+    let discountAmount = 0;
+    if (data.discountType === 'percentage') {
+      const pct = Math.min(100, Math.max(0, Number(data.discountValue) || 0));
+      discountAmount = Math.round((subtotal * pct) / 100);
+    } else {
+      discountAmount = Math.max(0, Number(data.discountValue) || 0);
+    }
+
+    // 3. Grand total
+    const grandTotal = Math.max(0, subtotal - discountAmount);
+    const paid = Math.max(0, Number(data.amountPaid) || 0);
+
+    // 4. Auto payment status
+    let paymentStatus = data.paymentStatus;
+    if (grandTotal > 0) {
+      if (paid >= grandTotal) {
+        paymentStatus = PaymentStatus.LUNAS;
+      } else if (paid > 0) {
+        paymentStatus = PaymentStatus.DP_TERBAYAR;
+      } else {
+        paymentStatus = PaymentStatus.BELUM_BAYAR;
+      }
+    }
+
+    return {
+      ...data,
+      lineItems: updatedLineItems,
+      discountAmount,
+      subtotal,
+      grandTotal,
+      paymentStatus,
+    };
+  }, []);
+
+  const handleFieldChange = (field: keyof InvoiceFormData, value: any) => {
+    setFormData((prev) => {
+      const updated = { ...prev, [field]: value };
+      return recalculate(updated);
+    });
+  };
+
+  const handleClientSelect = (selectedClientId: string) => {
+    const matched = clients.find((c) => c.id === selectedClientId);
+    if (matched) {
+      setFormData((prev) => ({
+        ...prev,
+        clientId: matched.id,
+        clientName: matched.name,
+        clientPhone: matched.phone || matched.whatsapp || '',
+        clientEmail: matched.email || '',
+        clientAddress: matched.address || '',
+      }));
+    }
+  };
+
+  // Line item handlers
+  const handleAddLineItem = (item?: Partial<InvoiceLineItem>) => {
+    setFormData((prev) => {
+      const newItem: InvoiceLineItem = {
+        id: generateId(),
+        description: item?.description || '',
+        quantity: item?.quantity || 1,
+        unitPrice: item?.unitPrice || 0,
+        totalPrice: (item?.quantity || 1) * (item?.unitPrice || 0),
+        sourceType: 'custom',
+      };
+      const updated = {
+        ...prev,
+        lineItems: [...prev.lineItems, newItem],
+      };
+      return recalculate(updated);
+    });
+  };
+
+  const handleUpdateLineItem = (
+    id: string,
+    field: 'description' | 'quantity' | 'unitPrice',
+    val: string | number
+  ) => {
+    setFormData((prev) => {
+      const updatedItems = prev.lineItems.map((item) => {
+        if (item.id === id) {
+          const updated = { ...item, [field]: val };
+          if (field === 'quantity' || field === 'unitPrice') {
+            const q = field === 'quantity' ? Number(val) || 1 : item.quantity;
+            const p = field === 'unitPrice' ? Number(val) || 0 : item.unitPrice;
+            updated.totalPrice = q * p;
+          }
+          return updated;
+        }
+        return item;
+      });
+      return recalculate({ ...prev, lineItems: updatedItems });
+    });
+  };
+
+  const handleRemoveLineItem = (id: string) => {
+    setFormData((prev) => {
+      if (prev.lineItems.length <= 1) return prev;
+      const updatedItems = prev.lineItems.filter((it) => it.id !== id);
+      return recalculate({ ...prev, lineItems: updatedItems });
+    });
+  };
+
+  // Submit action
+  const handleSubmit = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    setErrorMsg(null);
+
+    // Validation
+    const effectiveTitle = formData.title.trim() || `Invoice ${formData.clientName || 'Layanan'}`;
+    if (!formData.isNewClient && !formData.clientId && !formData.clientName.trim()) {
+      setErrorMsg('Pilih klien atau masukkan nama klien.');
+      return;
+    }
+    if (formData.isNewClient && !formData.clientName.trim()) {
+      setErrorMsg('Nama klien baru wajib diisi.');
+      return;
+    }
+    if (formData.lineItems.length === 0) {
+      setErrorMsg('Tambahkan minimal 1 item layanan pada invoice.');
+      return;
+    }
+    const hasInvalidLineItem = formData.lineItems.some((it) => !it.description.trim());
+    if (hasInvalidLineItem) {
+      setErrorMsg('Semua baris item wajib memiliki deskripsi/nama item.');
+      return;
+    }
+
+    setIsSubmitting(true);
+
+    try {
+      let finalClientId = formData.clientId;
+      let finalClientName = formData.clientName.trim();
+
+      // 1. If new client requested, persist client record first
+      if (formData.isNewClient) {
+        const newClientPayload = {
+          name: finalClientName,
+          email: formData.clientEmail.trim(),
+          phone: formData.clientPhone.trim(),
+          whatsapp: formData.clientPhone.trim(),
+          address: formData.clientAddress.trim(),
+          since: new Date().getFullYear().toString(),
+          status: 'Aktif' as any,
+          clientType: 'Langsung' as any,
+          lastContact: new Date().toISOString(),
+          portalAccessId: Math.random().toString(36).substring(2, 10).toUpperCase(),
+        };
+
+        const createdClient = await createClient(newClientPayload);
+        finalClientId = createdClient.id;
+        finalClientName = createdClient.name;
+      }
+
+      // 2. Prepare line items mapping
+      // Item 0 is primary package/service
+      const primaryItem = formData.lineItems[0];
+      const additionalItems = formData.lineItems.slice(1);
+
+      // Separate add-ons vs custom items
+      const addOnItems = additionalItems.filter((it) => it.sourceType === 'addon');
+      const customCostItems = additionalItems.filter((it) => it.sourceType !== 'addon');
+
+      // Custom costs for line items that are not add-ons
+      const customCosts = customCostItems.map((item) => ({
+        id: item.id || generateId(),
+        description: item.quantity > 1 ? `${item.description} (${item.quantity}x)` : item.description,
+        amount: item.totalPrice,
+      }));
+
+      const primaryPackageName = primaryItem
+        ? (primaryItem.quantity > 1
+            ? `${primaryItem.description} (${primaryItem.quantity}x)`
+            : primaryItem.description)
+        : (projectToEdit?.packageName || 'Layanan Utama');
+
+      // Check if project originally had add-ons in PROJECT_ADD_ONS
+      const hadOriginalAddOns = Boolean(projectToEdit?.addOns && projectToEdit.addOns.length > 0);
+      const updatedAddOns = hadOriginalAddOns
+        ? addOnItems.map((it) => ({
+            id: it.originalAddOnId || it.id,
+            name: it.description,
+            price: it.totalPrice,
+          }))
+        : undefined;
+
+      const projectDataPayload: any = {
+        projectName: effectiveTitle,
+        clientName: finalClientName,
+        clientId: finalClientId,
+        projectType: formData.projectType || projectToEdit?.projectType || 'Wedding',
+        packageName: primaryPackageName,
+        packageId: projectToEdit?.packageId,
+        date: formData.invoiceDate,
+        deadlineDate: formData.eventDate || formData.invoiceDate,
+        location: formData.location || '',
+        address: formData.address || '',
+        // Preserve status, progress and substatus workflows without accidental resets
+        status: projectToEdit?.status || 'Sedang Berjalan',
+        progress: projectToEdit?.progress ?? 0,
+        activeSubStatuses: projectToEdit?.activeSubStatuses,
+        customSubStatuses: projectToEdit?.customSubStatuses,
+        confirmedSubStatuses: projectToEdit?.confirmedSubStatuses,
+        clientSubStatusNotes: projectToEdit?.clientSubStatusNotes,
+        subStatusConfirmationSentAt: projectToEdit?.subStatusConfirmationSentAt,
+        bookingStatus: projectToEdit?.bookingStatus,
+        isEditingConfirmedByClient: projectToEdit?.isEditingConfirmedByClient,
+        isPrintingConfirmedByClient: projectToEdit?.isPrintingConfirmedByClient,
+        isDeliveryConfirmedByClient: projectToEdit?.isDeliveryConfirmedByClient,
+        team: projectToEdit?.team,
+        printingDetails: projectToEdit?.printingDetails,
+        printingCost: projectToEdit?.printingCost,
+        tasks: projectToEdit?.tasks,
+        driveLink: projectToEdit?.driveLink,
+        clientDriveLink: projectToEdit?.clientDriveLink,
+        finalDriveLink: projectToEdit?.finalDriveLink,
+        weddingDayChecklist: projectToEdit?.weddingDayChecklist,
+        startTime: projectToEdit?.startTime,
+        endTime: projectToEdit?.endTime,
+        color: projectToEdit?.color,
+        image: projectToEdit?.image,
+        totalCost: formData.grandTotal,
+        amountPaid: formData.amountPaid,
+        paymentStatus: formData.paymentStatus,
+        discountAmount: Number(formData.discountAmount) || 0,
+        transportCost: Number(formData.transportCost) || 0,
+        customCosts: customCosts,
+        notes: formData.notes || '',
+      };
+
+      if (updatedAddOns !== undefined) {
+        projectDataPayload.addOns = updatedAddOns;
+      }
+
+      let savedProject: Project;
+      let recordedTx: Transaction | undefined = undefined;
+
+      if (formData.id) {
+        // Edit existing project
+        const updated = await updateProject(formData.id, projectDataPayload);
+
+        // Fetch full project with relations to ensure team assignments and checklists are retained in memory
+        try {
+          const fullProj = await getProjectWithRelations(formData.id);
+          savedProject = fullProj || {
+            ...projectToEdit,
+            ...updated,
+            team: projectToEdit?.team?.length ? projectToEdit.team : (updated.team || []),
+            weddingDayChecklist: projectToEdit?.weddingDayChecklist || updated.weddingDayChecklist,
+          };
+        } catch {
+          savedProject = {
+            ...projectToEdit,
+            ...updated,
+            team: projectToEdit?.team?.length ? projectToEdit.team : (updated.team || []),
+            weddingDayChecklist: projectToEdit?.weddingDayChecklist || updated.weddingDayChecklist,
+          };
+        }
+
+        // If user increased amountPaid, record an income transaction for the increment
+        const previousPaid = Number(projectToEdit?.amountPaid) || 0;
+        const paymentDiff = Number(formData.amountPaid) - previousPaid;
+        if (paymentDiff > 0) {
+          try {
+            recordedTx = await createTransaction({
+              date: formData.invoiceDate || getTodayIsoDate(),
+              description: `Pembayaran Tambahan Invoice ${savedProject.projectName}`,
+              amount: paymentDiff,
+              type: TransactionType.INCOME,
+              projectId: savedProject.id,
+              category: 'Pembayaran Klien',
+              method: 'Transfer Bank',
+            });
+          } catch (txErr) {
+            console.warn('[useInvoiceFormModal] Failed to log additional transaction:', txErr);
+          }
+        }
+
+        showNotification('Invoice berhasil diperbarui!');
+      } else {
+        // Create new project
+        savedProject = await createProject(projectDataPayload);
+
+        // If initial amount paid is entered, record income transaction
+        if (formData.amountPaid > 0) {
+          try {
+            recordedTx = await createTransaction({
+              date: formData.invoiceDate || getTodayIsoDate(),
+              description: `DP / Pembayaran Invoice ${savedProject.projectName}`,
+              amount: formData.amountPaid,
+              type: TransactionType.INCOME,
+              projectId: savedProject.id,
+              category: 'Pembayaran Klien',
+              method: 'Transfer Bank',
+            });
+          } catch (txErr) {
+            console.warn('[useInvoiceFormModal] Failed to create initial transaction:', txErr);
+          }
+        }
+
+        showNotification('Invoice berhasil dibuat!');
+      }
+
+      onSuccess(savedProject, recordedTx);
+    } catch (err: any) {
+      console.error('[useInvoiceFormModal] Error saving invoice:', err);
+      setErrorMsg(err.message || 'Gagal menyimpan invoice. Silakan coba lagi.');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  return {
+    formData,
+    isSubmitting,
+    errorMsg,
+    handleFieldChange,
+    handleClientSelect,
+    handleAddLineItem,
+    handleUpdateLineItem,
+    handleRemoveLineItem,
+    handleSubmit,
+  };
+}

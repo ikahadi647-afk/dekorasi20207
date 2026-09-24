@@ -4,8 +4,9 @@ import SignaturePad from '../../../shared/ui/SignaturePad';
 import InvoiceDocument from '../../finance/components/InvoiceDocument';
 import ClientReceiptDocument from './ClientReceiptDocument';
 import { PencilIcon, DownloadIcon, WhatsappIcon } from '../../../constants';
-import { Client, Project, Package, Profile, Transaction } from '../../../types';
+import { Client, Project, Package, Profile, Transaction, TeamMember, TeamProjectPayment } from '../../../types';
 import { DocumentToView } from '../hooks/useClientDocumentActions';
+import { PaymentSlipDocument } from '../../team/components/PaymentSlipDocument';
 
 interface ClientDocumentModalProps {
     documentToView: DocumentToView | null;
@@ -20,6 +21,8 @@ interface ClientDocumentModalProps {
     onEditDocument: () => void;
     onDownloadPDF: () => void;
     onShareDocumentWA: () => void;
+    teamMembers?: TeamMember[];
+    teamProjectPayments?: TeamProjectPayment[];
 }
 
 export const ClientDocumentModal: React.FC<ClientDocumentModalProps> = ({
@@ -35,31 +38,66 @@ export const ClientDocumentModal: React.FC<ClientDocumentModalProps> = ({
     onEditDocument,
     onDownloadPDF,
     onShareDocumentWA,
+    teamMembers,
+    teamProjectPayments,
 }) => {
 
     const renderDocumentBody = () => {
-        if (!documentToView || !clientForDetail) return null;
+        if (!documentToView) return null;
 
         if (documentToView.type === 'invoice') {
+            // After narrowing: documentToView is { type: 'invoice'; project: Project }
+            const project = documentToView.project;
+            const effectiveClient = clientForDetail || {
+                id: project.clientId || '',
+                name: project.clientName || 'Klien',
+                phone: '',
+                whatsapp: '',
+                email: '',
+                address: project.address || '',
+            } as Client;
+
             return (
                 <InvoiceDocument
                     id="invoice-document"
-                    project={documentToView.project}
+                    project={project}
                     profile={userProfile}
                     packages={packages}
-                    client={clientForDetail}
+                    client={effectiveClient}
                 />
             );
         } else if (documentToView.type === 'receipt') {
+            // After narrowing: documentToView is { type: 'receipt'; transaction: Transaction }
             const transaction = documentToView.transaction;
-            const project = transaction.projectId ? projects.find(p => p.id === transaction.projectId) : null;
+            const relatedProject = transaction.projectId
+                ? projects.find(p => p.id === transaction.projectId)
+                : undefined;
+            const effectiveClient = clientForDetail || {
+                id: relatedProject?.clientId || '',
+                name: relatedProject?.clientName || 'Klien',
+                phone: '',
+                whatsapp: '',
+                email: '',
+                address: relatedProject?.address || '',
+            } as Client;
 
             return (
                 <ClientReceiptDocument
                     transaction={transaction}
-                    project={project}
+                    project={relatedProject}
                     profile={userProfile}
-                    client={clientForDetail}
+                    client={effectiveClient}
+                />
+            );
+        } else if (documentToView.type === 'slip-gaji') {
+            if (!teamMembers || !teamProjectPayments) return null;
+            return (
+                <PaymentSlipDocument
+                    record={documentToView.teamPaymentRecord}
+                    teamMembers={teamMembers}
+                    teamProjectPayments={teamProjectPayments}
+                    projects={projects}
+                    userProfile={userProfile}
                 />
             );
         }
@@ -70,14 +108,16 @@ export const ClientDocumentModal: React.FC<ClientDocumentModalProps> = ({
         documentToView &&
         (documentToView.type === 'invoice'
             ? !!documentToView.project?.invoiceSignature
-            : !!documentToView.transaction?.vendorSignature);
+            : documentToView.type === 'receipt'
+            ? !!documentToView.transaction?.vendorSignature
+            : !!documentToView.teamPaymentRecord?.vendorSignature);
 
     return (
         <>
             <Modal
                 isOpen={!!documentToView}
                 onClose={onClose}
-                title={documentToView ? (documentToView.type === 'invoice' ? 'Invoice' : 'Tanda Terima') : ''}
+                title={documentToView ? (documentToView.type === 'invoice' ? 'Invoice' : documentToView.type === 'receipt' ? 'Tanda Terima' : 'Slip Gaji') : ''}
                 size="4xl"
             >
                 <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">

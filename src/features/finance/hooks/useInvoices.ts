@@ -87,9 +87,49 @@ export function useInvoices({
   const allDocs = useMemo((): InvoiceDoc[] => {
     const docs: InvoiceDoc[] = [];
 
+    // RULE 2, 6, 7: Pre-compute actual paid amounts from income transactions per project.
+    // Transactions are the source of truth for payment data.
+    const txPaidByProject = new Map<string, number>();
+    transactions
+      .filter((t) => t.type === TransactionType.INCOME && t.projectId)
+      .forEach((t) => {
+        const prev = txPaidByProject.get(t.projectId!) || 0;
+        txPaidByProject.set(t.projectId!, prev + (Number(t.amount) || 0));
+      });
+
     // 1. Invoice docs — one per project
     projects.forEach((proj) => {
-      const client = proj.clientId ? clientMap.get(proj.clientId) : undefined;
+      let client = proj.clientId ? clientMap.get(proj.clientId) : undefined;
+      if (!client && proj.clientName) {
+        client = clients.find((c) => c.name.toLowerCase() === proj.clientName.toLowerCase());
+      }
+      if (!client && proj.clientName) {
+        client = {
+          id: proj.clientId || '',
+          name: proj.clientName,
+          phone: '',
+          whatsapp: '',
+          email: '',
+          address: proj.address || '',
+        } as Client;
+      }
+
+      // Use transaction sum as paidAmount (source of truth).
+      // Fall back to proj.amountPaid only if no transactions exist yet for this project.
+      const txPaid = txPaidByProject.get(proj.id);
+      const paidAmount = txPaid !== undefined ? txPaid : (proj.amountPaid || 0);
+
+      // Recompute payment status from actual paid vs total (Rules 6 & 7)
+      const total = proj.totalCost || 0;
+      let paymentStatus: string;
+      if (total > 0 && paidAmount >= total) {
+        paymentStatus = PaymentStatus.LUNAS;
+      } else if (paidAmount > 0) {
+        paymentStatus = PaymentStatus.DP_TERBAYAR;
+      } else {
+        paymentStatus = proj.paymentStatus || PaymentStatus.BELUM_BAYAR;
+      }
+
       docs.push({
         id: proj.id,
         kind: 'invoice',
@@ -97,8 +137,8 @@ export function useInvoices({
         clientName: proj.clientName,
         date: proj.date || proj.createdAt || '',
         amount: proj.totalCost,
-        paidAmount: proj.amountPaid || 0,
-        paymentStatus: proj.paymentStatus || PaymentStatus.BELUM_BAYAR,
+        paidAmount,
+        paymentStatus,
         projectName: proj.projectName,
         projectId: proj.id,
         project: proj,

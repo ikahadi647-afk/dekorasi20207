@@ -14,6 +14,7 @@ export type CreateProjectInput = {
   clientId: string;
   projectType: string;
   packageName: string;
+  packageId?: string;
   date: string; // ISO date
   location: string;
   status: string;
@@ -199,7 +200,7 @@ async function linkProjectAddOns(projectId: string, addOns: Array<{ id?: string;
   const validAddOns = (addOns || []).filter(a => a && a.name && a.name.trim());
   if (validAddOns.length === 0) return;
 
-  const addOnNames = validAddOns.map(a => a.name.trim());
+  const addOnNames = Array.from(new Set(validAddOns.map(a => a.name.trim())));
   const { data: addOnRows, error: addOnErr } = await supabase
     .from(ADD_ONS)
     .select('id, name')
@@ -212,13 +213,16 @@ async function linkProjectAddOns(projectId: string, addOns: Array<{ id?: string;
   const missing = validAddOns.filter(a => !addOnIdByName[a.name.trim()]);
   if (missing.length > 0) {
     try {
-      const toCreate = missing.map(m => ({
-        name: m.name.trim(),
-        price: Number(m.price ?? 0),
-      }));
+      const distinctMissing = Array.from(new Set(missing.map(m => m.name.trim()))).map(name => {
+        const item = missing.find(m => m.name.trim() === name);
+        return {
+          name,
+          price: Number(item?.price ?? 0),
+        };
+      });
       const { data: createdRows, error: createErr } = await supabase
         .from(ADD_ONS)
-        .insert(toCreate)
+        .insert(distinctMissing)
         .select('id, name');
       if (!createErr && createdRows) {
         createdRows.forEach(r => {
@@ -230,10 +234,13 @@ async function linkProjectAddOns(projectId: string, addOns: Array<{ id?: string;
     }
   }
 
-  const toInsert = validAddOns
-    .map(a => addOnIdByName[a.name.trim()])
-    .filter(Boolean)
-    .map(add_on_id => ({ project_id: projectId, add_on_id }));
+  const uniqueAddOnIds = Array.from(new Set(
+    validAddOns
+      .map(a => addOnIdByName[a.name.trim()])
+      .filter(Boolean)
+  ));
+
+  const toInsert = uniqueAddOnIds.map(add_on_id => ({ project_id: projectId, add_on_id }));
 
   if (toInsert.length > 0) {
     const { error: linkErr } = await supabase.from(PROJECT_ADD_ONS).insert(toInsert);
@@ -242,29 +249,33 @@ async function linkProjectAddOns(projectId: string, addOns: Array<{ id?: string;
 }
 
 export async function updateProject(projectId: string, input: UpdateProjectInput): Promise<Project> {
-  // Resolve package id if packageName provided
-  let packageId: string | undefined = undefined;
+  // Resolve package id if packageName provided, preserving explicitly provided packageId if not matched
+  let packageId: string | undefined = input.packageId;
   if (input.packageName) {
     const { data: pkg, error: pkgErr } = await supabase
       .from(PACKAGES)
       .select('id')
       .eq('name', input.packageName)
       .maybeSingle();
-    if (!pkgErr) packageId = pkg?.id;
+    if (!pkgErr && pkg?.id) {
+      packageId = pkg.id;
+    }
   }
   const isUuid = (v?: string) => !!v && /^[0-9a-fA-F-]{36}$/.test(v);
   const promoCodeId = input.promoCodeId && isUuid(input.promoCodeId) ? input.promoCodeId : undefined;
+  const validClientId = isUuid(input.clientId) ? input.clientId : null;
+  const validPackageId = isUuid(packageId) ? packageId : null;
 
   const payload: Record<string, unknown> = {
     ...(input.projectName !== undefined ? { project_name: input.projectName } : {}),
     ...(input.clientName !== undefined ? { client_name: input.clientName } : {}),
-    ...(input.clientId !== undefined ? { client_id: input.clientId } : {}),
+    ...(input.clientId !== undefined ? { client_id: validClientId } : {}),
     ...(input.projectType !== undefined ? { project_type: input.projectType } : {}),
     ...(input.packageName !== undefined ? { package_name: input.packageName } : {}),
-    ...(packageId !== undefined ? { package_id: packageId } : {}),
+    ...(packageId !== undefined ? { package_id: validPackageId } : {}),
     ...(input.date !== undefined ? { date: input.date } : {}),
     ...(input.deadlineDate !== undefined ? { deadline_date: input.deadlineDate || null } : {}),
-    ...(input.location !== undefined ? { location: input.location || null } : {}),
+    ...(input.location !== undefined ? { location: input.location ?? '' } : {}),
     ...(input.status !== undefined ? { status: input.status } : {}),
     ...(input.progress !== undefined ? { progress: input.progress } : {}),
     ...(input.totalCost !== undefined ? { total_cost: input.totalCost } : {}),
@@ -330,7 +341,15 @@ export async function updateProject(projectId: string, input: UpdateProjectInput
   // Return updated project
   const { data, error } = await supabase.from(PROJECTS).select('*').eq('id', projectId).single();
   if (error) throw error;
-  return normalizeProject(data);
+  const normalized = normalizeProject(data);
+  if (input.addOns) {
+    normalized.addOns = input.addOns.map(a => ({
+      id: a.id || '',
+      name: a.name,
+      price: Number(a.price || 0),
+    }));
+  }
+  return normalized;
 }
 
 export async function deleteProject(projectId: string): Promise<boolean> {

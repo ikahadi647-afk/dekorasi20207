@@ -1,7 +1,8 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { Project, Client, Package, PaymentStatus, TransactionType, Transaction } from '../../../types';
 import { InvoiceFormData, InvoiceLineItem } from '../types/invoiceForm';
-import { createProject, updateProject, getProjectWithRelations } from '../../../services/projects';
+import { createProject, updateProject, getProjectWithRelations, UpdateProjectInput, CreateProjectInput } from '../../../services/projects';
 import { createClient } from '../../../services/clients';
 import { createTransaction } from '../../../services/transactions';
 
@@ -10,6 +11,8 @@ interface UseInvoiceFormModalProps {
   projectToEdit?: Project | null;
   clients: Client[];
   packages: Package[];
+  /** All transactions — used to compute actual amountPaid from DB truth in edit mode */
+  transactions?: Transaction[];
   showNotification: (msg: string) => void;
   onSuccess: (savedProject: Project, newTransaction?: Transaction) => void;
 }
@@ -23,23 +26,39 @@ export function useInvoiceFormModal({
   projectToEdit,
   clients,
   packages,
+  transactions = [],
   showNotification,
   onSuccess,
 }: UseInvoiceFormModalProps) {
+  const queryClient = useQueryClient();
   const [formData, setFormData] = useState<InvoiceFormData>(() => createInitialState(projectToEdit, clients));
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
+  /**
+   * Compute the true amount paid for a project from the transactions array.
+   * Transactions are the source of truth for payment data.
+   */
+  function computeAmountPaidFromTransactions(projectId: string): number {
+    if (!Array.isArray(transactions)) return 0;
+    return transactions
+      .filter((t) => t.projectId === projectId && t.type === TransactionType.INCOME)
+      .reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
+  }
+
   // Helper to construct initial state
   function createInitialState(editProj?: Project | null, clientList: Client[] = []): InvoiceFormData {
     if (editProj) {
-      const client = clientList.find((c) => c.id === editProj.clientId);
+      const client = clientList.find((c) => c.id === editProj.clientId) || clientList.find((c) => c.name.toLowerCase() === (editProj.clientName || '').toLowerCase());
       const lineItems: InvoiceLineItem[] = [];
 
+      const safeAddOns = Array.isArray(editProj.addOns) ? editProj.addOns : [];
+      const safeCustomCosts = Array.isArray(editProj.customCosts) ? editProj.customCosts : [];
+
       // Reconstruct line items from editProj
-      const subtotal = editProj.totalCost + (editProj.discountAmount || 0);
-      const addOnsTotal = (editProj.addOns || []).reduce((acc, curr) => acc + (curr.price || 0), 0);
-      const customCostsTotal = (editProj.customCosts || []).reduce((acc, curr) => acc + (curr.amount || 0), 0);
+      const subtotal = (Number(editProj.totalCost) || 0) + (Number(editProj.discountAmount) || 0);
+      const addOnsTotal = safeAddOns.reduce((acc, curr) => acc + (Number(curr?.price) || 0), 0);
+      const customCostsTotal = safeCustomCosts.reduce((acc, curr) => acc + (Number(curr?.amount) || 0), 0);
       const primaryItemPrice = Math.max(0, subtotal - addOnsTotal - (Number(editProj.transportCost) || 0) - customCostsTotal);
 
       // 1. Primary package / service line item
@@ -53,7 +72,7 @@ export function useInvoiceFormModal({
       });
 
       // 2. Add-ons as line items
-      (editProj.addOns || []).forEach((ao) => {
+      safeAddOns.forEach((ao) => {
         lineItems.push({
           id: ao.id || generateId(),
           description: ao.name,
@@ -66,7 +85,7 @@ export function useInvoiceFormModal({
       });
 
       // 3. Custom costs as line items
-      (editProj.customCosts || []).forEach((cc) => {
+      safeCustomCosts.forEach((cc) => {
         lineItems.push({
           id: cc.id || generateId(),
           description: cc.description,
@@ -81,11 +100,28 @@ export function useInvoiceFormModal({
       const tCost = Number(editProj.transportCost) || 0;
       const dAmount = Number(editProj.discountAmount) || 0;
 
+      // --- RULE 2 & 6: In edit mode, amountPaid is derived from transactions (source of truth).
+      // If transactions array has records for this project, use their sum.
+      // Fall back to project.amountPaid only when no transaction data is available.
+      const txPaid = computeAmountPaidFromTransactions(editProj.id);
+      const actualPaid = txPaid > 0 ? txPaid : (Number(editProj.amountPaid) || 0);
+
+      // Recompute payment status based on actual paid vs invoice total
+      const grandTotal = editProj.totalCost || 0;
+      let actualPaymentStatus: PaymentStatus;
+      if (grandTotal > 0 && actualPaid >= grandTotal) {
+        actualPaymentStatus = PaymentStatus.LUNAS;
+      } else if (actualPaid > 0) {
+        actualPaymentStatus = PaymentStatus.DP_TERBAYAR;
+      } else {
+        actualPaymentStatus = PaymentStatus.BELUM_BAYAR;
+      }
+
       return {
         id: editProj.id,
         invoiceNumber: `INV-${editProj.id.slice(-8).toUpperCase()}`,
         isNewClient: false,
-        clientId: editProj.clientId || '',
+        clientId: editProj.clientId || client?.id || '',
         clientName: editProj.clientName || client?.name || '',
         clientPhone: client?.phone || client?.whatsapp || '',
         clientEmail: client?.email || '',
@@ -104,9 +140,10 @@ export function useInvoiceFormModal({
         discountValue: dAmount,
         discountAmount: dAmount,
         subtotal: lineItemsSum + tCost,
-        grandTotal: editProj.totalCost,
-        amountPaid: editProj.amountPaid || 0,
-        paymentStatus: editProj.paymentStatus || PaymentStatus.BELUM_BAYAR,
+        grandTotal: grandTotal,
+        // In edit mode: amountPaid is READ-ONLY — derived from transactions, not editable
+        amountPaid: actualPaid,
+        paymentStatus: actualPaymentStatus,
         notes: editProj.notes || '',
       };
     }
@@ -344,17 +381,14 @@ export function useInvoiceFormModal({
             : primaryItem.description)
         : (projectToEdit?.packageName || 'Layanan Utama');
 
-      // Check if project originally had add-ons in PROJECT_ADD_ONS
-      const hadOriginalAddOns = Boolean(projectToEdit?.addOns && projectToEdit.addOns.length > 0);
-      const updatedAddOns = hadOriginalAddOns
-        ? addOnItems.map((it) => ({
-            id: it.originalAddOnId || it.id,
-            name: it.description,
-            price: it.totalPrice,
-          }))
-        : undefined;
+      // Map add-on items directly to maintain synchronization with project_add_ons
+      const updatedAddOns = addOnItems.map((it) => ({
+        id: it.originalAddOnId || it.id,
+        name: it.description,
+        price: it.totalPrice,
+      }));
 
-      const projectDataPayload: any = {
+      const projectDataPayload: CreateProjectInput & UpdateProjectInput = {
         projectName: effectiveTitle,
         clientName: finalClientName,
         clientId: finalClientId,
@@ -377,44 +411,58 @@ export function useInvoiceFormModal({
         isEditingConfirmedByClient: projectToEdit?.isEditingConfirmedByClient,
         isPrintingConfirmedByClient: projectToEdit?.isPrintingConfirmedByClient,
         isDeliveryConfirmedByClient: projectToEdit?.isDeliveryConfirmedByClient,
-        team: projectToEdit?.team,
         printingDetails: projectToEdit?.printingDetails,
         printingCost: projectToEdit?.printingCost,
-        tasks: projectToEdit?.tasks,
         driveLink: projectToEdit?.driveLink,
         clientDriveLink: projectToEdit?.clientDriveLink,
         finalDriveLink: projectToEdit?.finalDriveLink,
-        weddingDayChecklist: projectToEdit?.weddingDayChecklist,
         startTime: projectToEdit?.startTime,
         endTime: projectToEdit?.endTime,
-        color: projectToEdit?.color,
-        image: projectToEdit?.image,
         totalCost: formData.grandTotal,
         amountPaid: formData.amountPaid,
         paymentStatus: formData.paymentStatus,
         discountAmount: Number(formData.discountAmount) || 0,
         transportCost: Number(formData.transportCost) || 0,
         customCosts: customCosts,
+        addOns: updatedAddOns,
         notes: formData.notes || '',
       };
-
-      if (updatedAddOns !== undefined) {
-        projectDataPayload.addOns = updatedAddOns;
-      }
 
       let savedProject: Project;
       let recordedTx: Transaction | undefined = undefined;
 
       if (formData.id) {
-        // Edit existing project
+        // ── EDIT MODE ──────────────────────────────────────────────────────
+        // RULE 2, 6, 8: amountPaid comes from transactions (source of truth).
+        // Editing an invoice ONLY changes invoice details (total, items, etc.).
+        // It NEVER creates a new transaction and NEVER overwrites amountPaid from the form.
+        const actualPaid = computeAmountPaidFromTransactions(formData.id);
+
+        // Recompute payment status based on transactions sum vs new total
+        const newTotal = formData.grandTotal;
+        let recalcStatus: PaymentStatus;
+        if (newTotal > 0 && actualPaid >= newTotal) {
+          recalcStatus = PaymentStatus.LUNAS;
+        } else if (actualPaid > 0) {
+          recalcStatus = PaymentStatus.DP_TERBAYAR;
+        } else {
+          recalcStatus = PaymentStatus.BELUM_BAYAR;
+        }
+
+        // Override payment fields in payload with transaction-derived values
+        projectDataPayload.amountPaid = actualPaid;
+        projectDataPayload.paymentStatus = recalcStatus;
+
         const updated = await updateProject(formData.id, projectDataPayload);
 
-        // Fetch full project with relations to ensure team assignments and checklists are retained in memory
+        // Fetch full project with relations to ensure team assignments and checklists are retained
         try {
           const fullProj = await getProjectWithRelations(formData.id);
           savedProject = fullProj || {
             ...projectToEdit,
             ...updated,
+            amountPaid: actualPaid,
+            paymentStatus: recalcStatus,
             team: projectToEdit?.team?.length ? projectToEdit.team : (updated.team || []),
             weddingDayChecklist: projectToEdit?.weddingDayChecklist || updated.weddingDayChecklist,
           };
@@ -422,36 +470,22 @@ export function useInvoiceFormModal({
           savedProject = {
             ...projectToEdit,
             ...updated,
+            amountPaid: actualPaid,
+            paymentStatus: recalcStatus,
             team: projectToEdit?.team?.length ? projectToEdit.team : (updated.team || []),
             weddingDayChecklist: projectToEdit?.weddingDayChecklist || updated.weddingDayChecklist,
           };
         }
 
-        // If user increased amountPaid, record an income transaction for the increment
-        const previousPaid = Number(projectToEdit?.amountPaid) || 0;
-        const paymentDiff = Number(formData.amountPaid) - previousPaid;
-        if (paymentDiff > 0) {
-          try {
-            recordedTx = await createTransaction({
-              date: formData.invoiceDate || getTodayIsoDate(),
-              description: `Pembayaran Tambahan Invoice ${savedProject.projectName}`,
-              amount: paymentDiff,
-              type: TransactionType.INCOME,
-              projectId: savedProject.id,
-              category: 'Pembayaran Klien',
-              method: 'Transfer Bank',
-            });
-          } catch (txErr) {
-            console.warn('[useInvoiceFormModal] Failed to log additional transaction:', txErr);
-          }
-        }
+        // RULE 3, 10, 11: Do NOT create any transaction when saving an invoice edit.
+        // Transaction creation only happens via a dedicated payment flow.
 
         showNotification('Invoice berhasil diperbarui!');
       } else {
-        // Create new project
+        // ── CREATE MODE ───────────────────────────────────────────────────
         savedProject = await createProject(projectDataPayload);
 
-        // If initial amount paid is entered, record income transaction
+        // RULE 4, 9: If initial amountPaid is entered on a NEW invoice, record one income transaction.
         if (formData.amountPaid > 0) {
           try {
             recordedTx = await createTransaction({
@@ -470,6 +504,16 @@ export function useInvoiceFormModal({
 
         showNotification('Invoice berhasil dibuat!');
       }
+
+      // RULE 13: Invalidate React Query caches so all views reflect the latest data
+      await Promise.allSettled([
+        queryClient.invalidateQueries({ queryKey: ['projects'] }),
+        queryClient.invalidateQueries({ queryKey: ['transactions'] }),
+        queryClient.invalidateQueries({ queryKey: ['clients'] }),
+        queryClient.invalidateQueries({ queryKey: ['invoices'] }),
+        queryClient.invalidateQueries({ queryKey: ['finance'] }),
+        queryClient.invalidateQueries({ queryKey: ['dashboard'] }),
+      ]);
 
       onSuccess(savedProject, recordedTx);
     } catch (err: any) {

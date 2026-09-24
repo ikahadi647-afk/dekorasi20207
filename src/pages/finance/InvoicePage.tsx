@@ -7,6 +7,9 @@ import {
   Package,
   ViewType,
   NavigationAction,
+  TeamPaymentRecord,
+  TeamMember,
+  TeamProjectPayment,
 } from '../../types';
 import { useInvoices, InvoiceDoc } from '../../features/finance/hooks/useInvoices';
 import InvoiceStatsBar from '../../features/finance/components/InvoiceStatsBar';
@@ -34,6 +37,9 @@ interface InvoicePageProps {
   setTransactions: React.Dispatch<React.SetStateAction<Transaction[]>>;
   packages: Package[];
   teamPaymentRecords: TeamPaymentRecord[];
+  setTeamPaymentRecords: React.Dispatch<React.SetStateAction<TeamPaymentRecord[]>>;
+  teamMembers: TeamMember[];
+  teamProjectPayments: TeamProjectPayment[];
   userProfile: Profile;
   showNotification: (msg: string) => void;
   handleNavigation: (view: ViewType, action?: NavigationAction) => void;
@@ -97,6 +103,9 @@ const InvoicePage: React.FC<InvoicePageProps> = ({
   setTransactions,
   packages,
   teamPaymentRecords,
+  setTeamPaymentRecords,
+  teamMembers,
+  teamProjectPayments,
   userProfile,
   showNotification,
   handleNavigation,
@@ -188,7 +197,7 @@ const InvoicePage: React.FC<InvoicePageProps> = ({
     onDeleteTransaction: (txId) =>
       setTransactions((prev) => prev.filter((t) => t.id !== txId)),
     onDeleteTeamPaymentRecord: (id) =>
-      console.log('Slip gaji deleted', id), // Need to update state if I had setTeamPaymentRecords
+      setTeamPaymentRecords((prev) => prev.filter((r) => r.id !== id)),
   });
 
   // ── Hook: document actions (PDF, WA, signature) ───────────────────────
@@ -237,8 +246,7 @@ const InvoicePage: React.FC<InvoicePageProps> = ({
     } else if (doc.kind === 'receipt' && doc.transaction) {
       setDocumentToView({ type: 'receipt', transaction: doc.transaction });
     } else if (doc.kind === 'slip-gaji' && doc.teamPaymentRecord) {
-      // Need a way to view slip gaji, for now just show a notice
-      showNotification('Fitur lihat slip gaji belum tersedia.');
+      setDocumentToView({ type: 'slip-gaji', teamPaymentRecord: doc.teamPaymentRecord });
     }
   };
 
@@ -249,8 +257,10 @@ const InvoicePage: React.FC<InvoicePageProps> = ({
     setDocumentToView(null);
     if (currentDoc.type === 'invoice') {
       handleEditInvoice(currentDoc.project);
-    } else {
+    } else if (currentDoc.type === 'receipt') {
       handleNavigation(ViewType.FINANCE, { type: 'openTransaction', id: currentDoc.transaction.id });
+    } else if (currentDoc.type === 'slip-gaji') {
+      showNotification('Slip gaji tidak dapat diedit dari sini.');
     }
   };
 
@@ -333,6 +343,8 @@ const InvoicePage: React.FC<InvoicePageProps> = ({
         userProfile={userProfile}
         packages={packages}
         projects={projects}
+        teamMembers={teamMembers}
+        teamProjectPayments={teamProjectPayments}
         isSignatureModalOpen={isSignatureModalOpen}
         setIsSignatureModalOpen={setIsSignatureModalOpen}
         onSaveSignature={handleSaveSignature}
@@ -351,6 +363,7 @@ const InvoicePage: React.FC<InvoicePageProps> = ({
         projectToEdit={invoiceToEdit}
         clients={clients}
         packages={packages}
+        transactions={transactions}
         userProfile={userProfile}
         showNotification={showNotification}
         onSuccess={handleInvoiceSaved}

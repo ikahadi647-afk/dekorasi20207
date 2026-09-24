@@ -41,9 +41,11 @@ const InvoiceDocument: React.FC<InvoiceDocumentProps> = ({
     }
   };
 
-  const subtotal = project.totalCost + (project.discountAmount || 0);
-  const addOnsTotal = (project.addOns || []).reduce((acc, curr) => acc + (curr.price || 0), 0);
-  const customCostsTotal = (project.customCosts || []).reduce((acc, curr) => acc + (curr.amount || 0), 0);
+  const safeAddOns = Array.isArray(project.addOns) ? project.addOns : [];
+  const safeCustomCosts = Array.isArray(project.customCosts) ? project.customCosts : [];
+  const subtotal = (Number(project.totalCost) || 0) + (Number(project.discountAmount) || 0);
+  const addOnsTotal = safeAddOns.reduce((acc, curr) => acc + (Number(curr?.price) || 0), 0);
+  const customCostsTotal = safeCustomCosts.reduce((acc, curr) => acc + (Number(curr?.amount) || 0), 0);
   const packagePrice = Math.max(0, subtotal - addOnsTotal - (Number(project.transportCost) || 0) - customCostsTotal);
 
   // Find the package description
@@ -192,8 +194,8 @@ const InvoiceDocument: React.FC<InvoiceDocumentProps> = ({
                 </td>
                 <td className="px-3 py-2 text-right font-bold text-slate-800 text-[12px] whitespace-nowrap print:text-black">{formatCurrency(packagePrice)}</td>
               </tr>
-              {project.addOns?.map((addon, idx) => (
-                <tr key={addon.id} className="align-top bg-white">
+              {safeAddOns.map((addon, idx) => (
+                <tr key={addon.id || idx} className="align-top bg-white">
                   <td className="px-3 py-2 text-center text-slate-800 font-medium border-r border-black">{2 + idx}</td>
                   <td className="px-3 py-2 border-r border-black">
                     <div className="flex flex-col">
@@ -206,7 +208,7 @@ const InvoiceDocument: React.FC<InvoiceDocumentProps> = ({
               ))}
               {project.transportCost && Number(project.transportCost) > 0 && (
                 <tr className="align-top bg-white">
-                  <td className="px-3 py-2 text-center text-slate-800 font-medium border-r border-black">{(project.addOns?.length || 0) + 2}</td>
+                  <td className="px-3 py-2 text-center text-slate-800 font-medium border-r border-black">{safeAddOns.length + 2}</td>
                   <td className="px-3 py-2 border-r border-black">
                     <div className="flex flex-col">
                       <p className="font-medium text-slate-800 text-[12px] print:text-black">Biaya Transport</p>
@@ -216,11 +218,11 @@ const InvoiceDocument: React.FC<InvoiceDocumentProps> = ({
                   <td className="px-3 py-2 text-right font-medium text-slate-800 text-[12px] whitespace-nowrap print:text-black">{formatCurrency(Number(project.transportCost))}</td>
                 </tr>
               )}
-              {project.customCosts?.map((cost, idx) => {
+              {safeCustomCosts.map((cost, idx) => {
                 const transportOffset = (project.transportCost && Number(project.transportCost) > 0) ? 1 : 0;
-                const rowNo = 2 + (project.addOns?.length || 0) + transportOffset + idx;
+                const rowNo = 2 + safeAddOns.length + transportOffset + idx;
                 return (
-                  <tr key={cost.id} className="align-top bg-white">
+                  <tr key={cost.id || idx} className="align-top bg-white">
                     <td className="px-3 py-2 text-center text-slate-800 font-medium border-r border-black">{rowNo}</td>
                     <td className="px-3 py-2 border-r border-black">
                       <div className="flex flex-col">

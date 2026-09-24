@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Client, Project, Transaction, Profile } from '../../../types';
+import { Client, Project, Transaction, Profile, TeamPaymentRecord } from '../../../types';
 import {
     generateInvoiceWhatsAppMessage,
     generateReceiptWhatsAppMessage
@@ -7,7 +7,8 @@ import {
 
 export type DocumentToView =
     | { type: 'invoice'; project: Project }
-    | { type: 'receipt'; transaction: Transaction };
+    | { type: 'receipt'; transaction: Transaction }
+    | { type: 'slip-gaji'; teamPaymentRecord: TeamPaymentRecord };
 
 interface UseClientDocumentActionsParams {
     documentToView: DocumentToView | null;

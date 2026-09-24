@@ -312,7 +312,7 @@ const components: any = (theme: Theme) => {
     MuiTableCell: {
       styleOverrides: {
         root: {
-          borderBottom: `1px solid ${theme.palette.divider}`,
+          borderBottom: `0.5px solid ${theme.palette.divider}`,
         },
       },
     },

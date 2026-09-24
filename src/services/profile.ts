@@ -1,5 +1,6 @@
 import supabase from '../lib/supabaseClient';
 import { Profile, ProjectStatusConfig } from '../types';
+import { getCurrentVendorId } from './tenant';
 
 const TABLE = 'profiles';
 
@@ -108,19 +109,22 @@ function toRow(p: Partial<Profile>): any {
 }
 
 export async function getProfile(): Promise<Profile | null> {
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return null;
+  const vendorId = await getCurrentVendorId();
+  if (!vendorId) return null;
 
   const { data, error } = await supabase
     .from(TABLE)
     .select('*')
-    .eq('admin_user_id', user.id)
+    .eq('vendor_id', vendorId)
     .maybeSingle();
   if (error && error.code !== 'PGRST116') throw error;
   return data ? fromRow(data) : null;
 }
 
 export async function upsertProfile(input: Partial<Profile> & { id?: string }): Promise<Profile> {
+  const vendorId = await getCurrentVendorId();
+  if (!vendorId) throw new Error('No active vendor membership');
+
   // Declare payload variable at function scope
   let bookingFormTemplatePayload: string | undefined = undefined;
 
@@ -160,6 +164,7 @@ export async function upsertProfile(input: Partial<Profile> & { id?: string }): 
     ...input, 
     bookingFormTemplate: bookingFormTemplatePayload ?? input.bookingFormTemplate, 
   } as any);
+  if (!input.id) row.vendor_id = vendorId;
   if (input.id) {
     const { error } = await supabase.from(TABLE).update(row).eq('id', input.id);
     if (error) throw error;

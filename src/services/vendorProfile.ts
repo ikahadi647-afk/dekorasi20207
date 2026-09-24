@@ -23,7 +23,7 @@ const fileToBase64 = (file: File): Promise<string> => {
     });
 };
 
-export const getVendorProfile = async (): Promise<VendorProfile | null> => {
+export const getVendorProfile = async (vendorSlug?: string): Promise<VendorProfile | null> => {
     const sanitizeProfile = (p: any): VendorProfile => {
         const heroImages = Array.isArray(p.hero_images)
             ? p.hero_images.filter(Boolean)
@@ -44,12 +44,16 @@ export const getVendorProfile = async (): Promise<VendorProfile | null> => {
     };
 
     try {
-        const { data, error } = await supabase
+        let query = supabase
             .from('vendor_profiles')
-            .select('*')
-            .order('created_at', { ascending: true })
-            .limit(1)
-            .maybeSingle();
+            .select('*, vendors!inner(slug)')
+            .order('created_at', { ascending: true });
+
+        if (vendorSlug) {
+            query = query.eq('vendors.slug', vendorSlug);
+        }
+
+        const { data, error } = await query.limit(1).maybeSingle();
 
         if (!error && data) {
             const clean = sanitizeProfile(data);

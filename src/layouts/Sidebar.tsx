@@ -175,7 +175,7 @@ const Sidebar: React.FC<SidebarProps> = React.memo(({
   // Compute user permissions (Admin gets full access, Member gets configured permissions)
   const userPermissions = useMemo(() => {
     if (!currentUser) return new Set<ViewType>();
-    if (currentUser.role === 'Admin') {
+    if (currentUser.role === 'Admin' || currentUser.role === 'Superadmin') {
       return new Set(Object.values(ViewType));
     }
     return new Set(currentUser.permissions || []);
@@ -183,7 +183,17 @@ const Sidebar: React.FC<SidebarProps> = React.memo(({
 
   // Filter menus based on user role & permissions
   const visibleMenus = useMemo(() => {
-    return NAV_MENUS.map(menu => {
+    const menus = currentUser?.role === 'Superadmin'
+      ? [...NAV_MENUS, {
+        id: 'superadmin',
+        label: 'Superadmin',
+        icon: SettingsIcon,
+        view: ViewType.SUPERADMIN,
+        section: 'Platform',
+      }]
+      : NAV_MENUS;
+
+    return menus.map(menu => {
       if (menu.view) {
         // Standalone menu
         if (!userPermissions.has(menu.view)) return null;
@@ -201,7 +211,7 @@ const Sidebar: React.FC<SidebarProps> = React.memo(({
       }
       return null;
     }).filter((menu): menu is NavMenuItem => Boolean(menu));
-  }, [userPermissions]);
+  }, [currentUser?.role, userPermissions]);
 
   // Handle standalone menu navigation
   const handleStandaloneClick = (view: ViewType) => {

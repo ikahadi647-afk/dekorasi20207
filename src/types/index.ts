@@ -68,6 +68,7 @@ export enum ViewType {
   VENDOR_PROFILE = 'Profil Vendor',
   INVOICES = 'Daftar Invoice',
   MIGRATION = 'Migrasi & Import Data',
+  SUPERADMIN = 'Superadmin',
 }
 
 export interface SubStatusConfig {
@@ -215,7 +216,7 @@ export interface User {
   password: string;
   fullName: string;
   companyName?: string;
-  role: 'Admin' | 'Member' | 'Kasir';
+  role: 'Admin' | 'Member' | 'Kasir' | 'Superadmin';
   permissions?: ViewType[];
   restrictedCards?: string[]; // IDs of cards that user cannot access
 }

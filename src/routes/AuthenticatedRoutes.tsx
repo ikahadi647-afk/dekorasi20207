@@ -65,6 +65,7 @@ const InvoicePage = lazy(() => import("../pages/finance/InvoicePage"));
 const ExcelMigrationPage = lazy(() =>
   import("../pages/migration/ExcelMigrationPage").then((m) => ({ default: m.ExcelMigrationPage }))
 );
+const SuperadminPage = lazy(() => import("../pages/superadmin/SuperadminPage"));
 
 export interface AuthenticatedRoutesProps {
   activeView: ViewType;
@@ -565,6 +566,10 @@ export const AuthenticatedRoutes: React.FC<AuthenticatedRoutesProps> = ({
 
     case ViewType.VENDOR_PROFILE:
       return <VendorProfileAdmin />;
+
+    case ViewType.SUPERADMIN:
+      if (currentUser?.role !== 'Superadmin') return <AccessDenied onBackToDashboard={onBackToDashboard} />;
+      return <SuperadminPage />;
 
     case ViewType.CALENDAR:
       return (

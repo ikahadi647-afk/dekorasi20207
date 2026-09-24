@@ -93,7 +93,7 @@ export function useAuth(): UseAuthReturn {
   const hasPermission = useCallback(
     (view: ViewType) => {
       if (!currentUser) return false;
-      if (currentUser.role === "Admin") return true;
+      if (currentUser.role === "Admin" || currentUser.role === "Superadmin") return true;
       return currentUser.permissions?.includes(view) || false;
     },
     [currentUser],

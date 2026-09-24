@@ -3,7 +3,6 @@ import { Card, CardType, FinancialPocket, PocketType, Profile, Project, Transact
 import Modal from '../../../shared/ui/Modal';
 import RupiahInput from '../../../shared/form/RupiahInput';
 import { formatCurrency } from '../../../utils/currency';
-import { Sparkles, Zap } from 'lucide-react';
 
 interface FinanceFormModalProps {
     modalState: {
@@ -42,6 +41,23 @@ const FinanceFormModal: React.FC<FinanceFormModalProps> = ({
     setTransactionProjectMonthFilter,
     pocketIcons
 }) => {
+    const filteredProjects = React.useMemo(() => {
+        if (!transactionProjectMonthFilter) return projects;
+
+        return projects.filter(project => project.date?.slice(0, 7) === transactionProjectMonthFilter);
+    }, [projects, transactionProjectMonthFilter]);
+
+    const handleProjectMonthChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const nextMonth = e.target.value;
+        setTransactionProjectMonthFilter(nextMonth);
+
+        if (form.projectId) {
+            const selectedProject = projects.find(project => project.id === form.projectId);
+            if (selectedProject?.date?.slice(0, 7) !== nextMonth) {
+                setForm((prev: any) => ({ ...prev, projectId: '' }));
+            }
+        }
+    };
     if (!modalState.type) return null;
 
     const modalTitle = `${modalState.mode === 'add' ? 'Tambah' : 'Edit'} ${
@@ -54,13 +70,6 @@ const FinanceFormModal: React.FC<FinanceFormModalProps> = ({
         'Transfer'
     }`;
 
-    // Dummy templates for demonstration based on request
-    const templates = [
-        { name: 'Overtime Kru 1 Jam', amount: 150000 },
-        { name: 'Drone Aerial', amount: 500000 },
-        { name: 'Bonus Tim', amount: 200000 },
-    ];
-
     return (
         <Modal
             isOpen={!!modalState.type}
@@ -70,12 +79,23 @@ const FinanceFormModal: React.FC<FinanceFormModalProps> = ({
             <form onSubmit={onSubmit} className="space-y-6">
                 {modalState.type === 'transaction' && (
                     <>
-                        <div className="flex items-center justify-between gap-4 p-4 bg-slate-50 rounded-xl">
-                            <select id="type" name="type" value={form.type} onChange={handleFormChange} className="bg-transparent font-bold text-lg text-slate-800 focus:outline-none">
-                                <option value={TransactionType.EXPENSE}>Pengeluaran</option>
-                                <option value={TransactionType.INCOME}>Pemasukan</option>
-                            </select>
-                            <input type="date" id="date" name="date" value={form.date} onChange={handleFormChange} className="bg-transparent text-slate-600 text-sm" />
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <div className="input-group">
+                                <select id="type" name="type" value={form.type} onChange={handleFormChange} className="input-field" required>
+                                    <option value={TransactionType.EXPENSE}>Pengeluaran</option>
+                                    <option value={TransactionType.INCOME}>Pemasukan</option>
+                                </select>
+                                <label htmlFor="type" className="input-label">Jenis</label>
+                            </div>
+                            <div className="input-group">
+                                <input type="date" id="date" name="date" value={form.date} onChange={handleFormChange} className="input-field" required />
+                                <label htmlFor="date" className="input-label">Tanggal</label>
+                            </div>
+                        </div>
+
+                        <div className="input-group">
+                            <input type="text" id="description" name="description" value={form.description} onChange={handleFormChange} className="input-field" placeholder=" " required />
+                            <label htmlFor="description" className="input-label">Deskripsi</label>
                         </div>
 
                         <div className="input-group">
@@ -84,61 +104,11 @@ const FinanceFormModal: React.FC<FinanceFormModalProps> = ({
                                 name="amount"
                                 value={String(form.amount ?? '')}
                                 onChange={(raw) => setForm((prev: any) => ({ ...prev, amount: raw }))}
-                                className="input-field text-2xl font-bold"
+                                className="input-field"
                                 placeholder="0"
                                 required
                             />
-                            <label htmlFor="amount" className="input-label text-base font-semibold">Jumlah Pembayaran (Rp)</label>
-                            {form.type === TransactionType.EXPENSE && (
-                                <p className="text-xs text-slate-500 mt-1">Maks: Rp 1.500.000 (Sisa saldo sumber dana)</p>
-                            )}
-                        </div>
-
-                        <div className="input-group">
-                            <select id="sourceId" name="sourceId" value={form.sourceId || ''} onChange={handleFormChange} className="input-field" required>
-                                <option value="">Pilih Tujuan Rekening / Kas...</option>
-                                <optgroup label="Kartu / Bank">
-                                    {cards.map(c => (
-                                        <option key={c.id} value={`card-${c.id}`}>
-                                            {c.cardHolderName} {c.cardType !== CardType.TUNAI ? `(${c.bankName} **** ${c.lastFourDigits})` : '(Tunai)'} (Saldo: {formatCurrency(c.balance)})
-                                        </option>
-                                    ))}
-                                </optgroup>
-                                <optgroup label="Kantong">
-                                    {pockets.map(p => (
-                                        <option key={p.id} value={`pocket-${p.id}`}>
-                                            {p.name} (Sisa: {formatCurrency(p.amount)})
-                                        </option>
-                                    ))}
-                                </optgroup>
-                            </select>
-                            <label htmlFor="sourceId" className="input-label">Tujuan Rekening / Kas</label>
-                        </div>
-
-                        <div className="pt-4 border-t border-slate-100">
-                            <div className="flex items-center gap-2 mb-3 text-emerald-600">
-                                <Zap size={16} />
-                                <span className="text-sm font-semibold">Pilih dari Template Biaya...</span>
-                            </div>
-                            <div className="flex gap-2 flex-wrap mb-4">
-                                {templates.map(t => (
-                                    <button 
-                                        key={t.name}
-                                        type="button"
-                                        onClick={() => setForm((prev: any) => ({ ...prev, description: t.name, amount: t.amount }))}
-                                        className="text-xs px-3 py-1.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-100 hover:bg-emerald-100 transition"
-                                    >
-                                        {t.name}
-                                    </button>
-                                ))}
-                            </div>
-                            
-                            <div className="space-y-4">
-                                <div className="input-group">
-                                    <input type="text" id="description" name="description" value={form.description} onChange={handleFormChange} className="input-field" placeholder="Contoh: Overtime Kru 1 Jam / Drone Aerial / Bonus" required />
-                                    <label htmlFor="description" className="input-label">Nama Biaya Tambahan</label>
-                                </div>
-                            </div>
+                            <label htmlFor="amount" className="input-label">Jumlah (IDR)</label>
                         </div>
 
                         <div className="input-group">
@@ -149,6 +119,50 @@ const FinanceFormModal: React.FC<FinanceFormModalProps> = ({
                                 ))}
                             </select>
                             <label htmlFor="category" className="input-label">Kategori</label>
+                        </div>
+
+                        <div className="input-group">
+                            <select id="sourceId" name="sourceId" value={form.sourceId || ''} onChange={handleFormChange} className="input-field" required>
+                                <option value="">Pilih Sumber...</option>
+                                <optgroup label="Kartu / Bank">
+                                    {cards.map(c => (
+                                        <option key={c.id} value={`card-${c.id}`}>
+                                            {c.cardHolderName} {c.cardType !== CardType.TUNAI ? `(${c.bankName} **** ${c.lastFourDigits})` : '(Tunai)'} (Saldo: {formatCurrency(c.balance)})
+                                        </option>
+                                    ))}
+                                </optgroup>
+                                <optgroup label="Kantong">
+                                    {pockets.map(p => (
+                                        <option key={p.id} value={`pocket-${p.id}`}>
+                                            {p.name} (Saldo: {formatCurrency(p.amount)})
+                                        </option>
+                                    ))}
+                                </optgroup>
+                            </select>
+                            <label htmlFor="sourceId" className="input-label">Sumber Dana</label>
+                        </div>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-[1.4fr_1fr] gap-4">
+                            <div className="input-group">
+                                <select id="projectId" name="projectId" value={form.projectId || ''} onChange={handleFormChange} className="input-field">
+                                    <option value="">Tidak Terkait Proyek</option>
+                                    {filteredProjects.map(project => (
+                                        <option key={project.id} value={project.id}>{project.projectName} - {project.clientName}</option>
+                                    ))}
+                                </select>
+                                <label htmlFor="projectId" className="input-label">Terkait Proyek (Opsional)</label>
+                            </div>
+                            <div className="input-group">
+                                <input
+                                    type="month"
+                                    id="projectMonth"
+                                    name="projectMonth"
+                                    value={transactionProjectMonthFilter}
+                                    onChange={handleProjectMonthChange}
+                                    className="input-field"
+                                />
+                                <label htmlFor="projectMonth" className="input-label">Bulan Proyek</label>
+                            </div>
                         </div>
                     </>
                 )}

@@ -1,13 +1,18 @@
 import supabase from '../lib/supabaseClient';
 
-export async function getCurrentVendorId(): Promise<string | null> {
+export async function getCurrentAuthUserId(): Promise<string | null> {
   const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return null;
+  return user?.id ?? null;
+}
+
+export async function getCurrentVendorId(): Promise<string | null> {
+  const userId = await getCurrentAuthUserId();
+  if (!userId) return null;
 
   const { data, error } = await supabase
     .from('vendor_memberships')
     .select('vendor_id')
-    .eq('auth_user_id', user.id)
+    .eq('auth_user_id', userId)
     .order('created_at', { ascending: true })
     .limit(1)
     .maybeSingle();

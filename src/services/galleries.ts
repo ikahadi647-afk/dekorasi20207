@@ -1,5 +1,6 @@
 import { supabase } from '../lib/supabaseClient';
 import { Gallery, GalleryImage } from '../types';
+import { getCurrentAuthUserId } from './tenant';
 
 export const createGallery = async (galleryData: Omit<Gallery, 'id' | 'public_id' | 'created_at' | 'updated_at'>): Promise<Gallery> => {
     // Generate a public_id from title slug + random suffix
@@ -11,8 +12,8 @@ export const createGallery = async (galleryData: Omit<Gallery, 'id' | 'public_id
     const random = Math.random().toString(36).substring(2, 7);
     const publicId = slug ? `${slug}-${random}` : random;
 
-    // Ensure user_id is always set (fallback to admin user ID if missing)
-    const userId = galleryData.user_id || '11111111-1111-1111-1111-111111111111';
+    const userId = await getCurrentAuthUserId();
+    if (!userId) throw new Error('Login diperlukan untuk membuat Pricelist');
 
     const payload = { ...galleryData, user_id: userId, public_id: publicId };
     console.log('[Gallery] Creating gallery with payload:', payload);

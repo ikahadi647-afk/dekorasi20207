@@ -1,5 +1,6 @@
 import { supabase } from '../lib/supabaseClient';
 import { VendorPortfolio, PortfolioImage } from '../types';
+import { getCurrentAuthUserId } from './tenant';
 
 const YOUTUBE_URLS_CACHE_KEY = 'weddfin-portfolio-youtube-urls';
 
@@ -40,10 +41,7 @@ const fileToBase64 = (file: File): Promise<string> => {
 };
 
 export const createVendorPortfolio = async (portfolioData: Omit<VendorPortfolio, 'id' | 'created_at' | 'updated_at'>): Promise<VendorPortfolio> => {
-    // Note: vendor_portfolios.user_id references auth.users(id).
-    // Because this app uses custom local authentication rather than Supabase Auth,
-    // user_id must be null to avoid foreign key violation (23503).
-    const payload = { ...portfolioData, user_id: null as string | null };
+    const payload = { ...portfolioData, user_id: await getCurrentAuthUserId() };
 
     let { data, error } = await supabase
         .from('vendor_portfolios')

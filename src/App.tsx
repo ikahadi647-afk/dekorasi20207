@@ -1,20 +1,20 @@
 import React, { Suspense } from "react";
 import { AlertCircle, RefreshCw, Home } from "lucide-react";
-import { ViewType } from "./src/types";
-import Sidebar from "./src/layouts/Sidebar";
-import Header from "./src/layouts/Header";
-import GlobalSearch from "./src/layouts/GlobalSearch";
-import BottomNavBar from "./src/layouts/BottomNavBar";
-import ErrorBoundary from "./src/shared/ui/ErrorBoundary";
-import Login from "./src/pages/auth/LoginPage";
+import { ViewType } from "./types";
+import Sidebar from "./layouts/Sidebar";
+import Header from "./layouts/Header";
+import GlobalSearch from "./layouts/GlobalSearch";
+import BottomNavBar from "./layouts/BottomNavBar";
+import ErrorBoundary from "./shared/ui/ErrorBoundary";
+import Login from "./pages/auth/LoginPage";
 
-import { useSimplifiedData } from "./src/contexts/SimplifiedDataContext";
-import { useAuth } from "./src/hooks/useAuth";
-import { useAuxiliaryData } from "./src/hooks/useAuxiliaryData";
-import { useAppRouting } from "./src/hooks/useAppRouting";
+import { useSimplifiedData } from "./contexts/SimplifiedDataContext";
+import { useAuth } from "./hooks/useAuth";
+import { useAuxiliaryData } from "./hooks/useAuxiliaryData";
+import { useAppRouting } from "./hooks/useAppRouting";
 
-import PublicRoutes, { isPublicRoutePath } from "./src/routes/PublicRoutes";
-import AuthenticatedRoutes from "./src/routes/AuthenticatedRoutes";
+import PublicRoutes, { isPublicRoutePath } from "./routes/PublicRoutes";
+import AuthenticatedRoutes from "./routes/AuthenticatedRoutes";
 
 function App() {
   // ─── Authentication & Session ───────────────────────────────────────────

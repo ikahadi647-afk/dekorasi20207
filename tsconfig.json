@@ -12,7 +12,20 @@
     "moduleDetection": "force",
     "allowJs": true,
     "jsx": "react-jsx",
-    "paths": { "@/*": ["./*"] },
+    "paths": { 
+      "@/*": ["./src/*"],
+      "@components/*": ["./src/components/*"],
+      "@features/*": ["./src/features/*"],
+      "@layouts/*": ["./src/layouts/*"],
+      "@pages/*": ["./src/pages/*"],
+      "@hooks/*": ["./src/hooks/*"],
+      "@utils/*": ["./src/utils/*"],
+      "@services/*": ["./src/services/*"],
+      "@types/*": ["./src/types/*"],
+      "@contexts/*": ["./src/contexts/*"],
+      "@theme/*": ["./src/theme/*"],
+      "@config/*": ["./src/config/*"]
+    },
     "allowImportingTsExtensions": true,
     "noEmit": true,
     "noImplicitAny": true

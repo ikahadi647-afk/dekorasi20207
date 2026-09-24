@@ -1,13 +1,13 @@
-import './src/init';
+import './init';
 import React, { Suspense } from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App';
-import ErrorBoundary from './src/shared/ui/ErrorBoundary';
-import { SimplifiedDataProvider } from './src/contexts/SimplifiedDataContext';
+import ErrorBoundary from './shared/ui/ErrorBoundary';
+import { SimplifiedDataProvider } from './contexts/SimplifiedDataContext';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import './src/index.css';
-import './app/index.css';
-import './src/styles/print.css';
+import './index.css';
+import '../app/index.css';
+import './styles/print.css';
 
 const queryClient = new QueryClient({
   defaultOptions: {

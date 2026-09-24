@@ -108,7 +108,14 @@ function toRow(p: Partial<Profile>): any {
 }
 
 export async function getProfile(): Promise<Profile | null> {
-  const { data, error } = await supabase.from(TABLE).select('*').limit(1).maybeSingle();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return null;
+
+  const { data, error } = await supabase
+    .from(TABLE)
+    .select('*')
+    .eq('admin_user_id', user.id)
+    .maybeSingle();
   if (error && error.code !== 'PGRST116') throw error;
   return data ? fromRow(data) : null;
 }

@@ -1,0 +1,133 @@
+{
+  "generated_at": "2026-09-24T14:35:27.381Z",
+  "source": "BACKUP_SUPABASE/backup_2026-09-24T14-30-16",
+  "output": "migration/007_schema_from_backup.sql",
+  "total_tables": 25,
+  "tables": [
+    {
+      "name": "add_ons",
+      "rows": 7,
+      "columns": 4
+    },
+    {
+      "name": "bookings",
+      "rows": 1,
+      "columns": 7
+    },
+    {
+      "name": "calendar_events",
+      "rows": 2,
+      "columns": 12
+    },
+    {
+      "name": "cards",
+      "rows": 2,
+      "columns": 8
+    },
+    {
+      "name": "clients",
+      "rows": 12,
+      "columns": 23
+    },
+    {
+      "name": "client_feedback",
+      "rows": 2,
+      "columns": 6
+    },
+    {
+      "name": "contracts",
+      "rows": 1,
+      "columns": 28
+    },
+    {
+      "name": "galleries",
+      "rows": 1,
+      "columns": 12
+    },
+    {
+      "name": "leads",
+      "rows": 14,
+      "columns": 10
+    },
+    {
+      "name": "notifications",
+      "rows": 19,
+      "columns": 7
+    },
+    {
+      "name": "packages",
+      "rows": 1,
+      "columns": 14
+    },
+    {
+      "name": "pockets",
+      "rows": 4,
+      "columns": 10
+    },
+    {
+      "name": "profiles",
+      "rows": 2,
+      "columns": 39
+    },
+    {
+      "name": "projects",
+      "rows": 12,
+      "columns": 60
+    },
+    {
+      "name": "project_add_ons",
+      "rows": 14,
+      "columns": 2
+    },
+    {
+      "name": "project_team_assignments",
+      "rows": 11,
+      "columns": 6
+    },
+    {
+      "name": "promo_codes",
+      "rows": 2,
+      "columns": 9
+    },
+    {
+      "name": "team_members",
+      "rows": 4,
+      "columns": 15
+    },
+    {
+      "name": "team_payment_records",
+      "rows": 5,
+      "columns": 7
+    },
+    {
+      "name": "team_project_payments",
+      "rows": 11,
+      "columns": 7
+    },
+    {
+      "name": "transactions",
+      "rows": 39,
+      "columns": 12
+    },
+    {
+      "name": "users",
+      "rows": 3,
+      "columns": 8
+    },
+    {
+      "name": "vendor_portfolios",
+      "rows": 6,
+      "columns": 9
+    },
+    {
+      "name": "vendor_profiles",
+      "rows": 1,
+      "columns": 12
+    },
+    {
+      "name": "wedding_day_checklists",
+      "rows": 20,
+      "columns": 9
+    }
+  ]
+}

@@ -63,5 +63,7 @@ codemagic.yaml.enc
 
 # Database Backups
 backups/
+BACKUP_SUPABASE/
 *.sql
 *.sql.gz
+*.dump

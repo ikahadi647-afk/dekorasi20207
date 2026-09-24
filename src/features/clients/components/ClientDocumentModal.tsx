@@ -70,8 +70,8 @@ export const ClientDocumentModal: React.FC<ClientDocumentModalProps> = ({
             // After narrowing: documentToView is { type: 'receipt'; transaction: Transaction }
             const transaction = documentToView.transaction;
             const relatedProject = transaction.projectId
-                ? projects.find(p => p.id === transaction.projectId)
-                : undefined;
+                ? projects.find(p => p.id === transaction.projectId) ?? null
+                : null;
             const effectiveClient = clientForDetail || {
                 id: relatedProject?.clientId || '',
                 name: relatedProject?.clientName || 'Klien',

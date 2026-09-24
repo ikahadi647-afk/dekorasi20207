@@ -1,0 +1,106 @@
+{
+  "total_tables": 25,
+  "total_rows": 196,
+  "tables": [
+    {
+      "name": "users",
+      "rows": 3
+    },
+    {
+      "name": "profiles",
+      "rows": 2
+    },
+    {
+      "name": "packages",
+      "rows": 1
+    },
+    {
+      "name": "add_ons",
+      "rows": 7
+    },
+    {
+      "name": "promo_codes",
+      "rows": 2
+    },
+    {
+      "name": "cards",
+      "rows": 2
+    },
+    {
+      "name": "pockets",
+      "rows": 4
+    },
+    {
+      "name": "team_members",
+      "rows": 4
+    },
+    {
+      "name": "clients",
+      "rows": 12
+    },
+    {
+      "name": "leads",
+      "rows": 14
+    },
+    {
+      "name": "bookings",
+      "rows": 1
+    },
+    {
+      "name": "contracts",
+      "rows": 1
+    },
+    {
+      "name": "projects",
+      "rows": 12
+    },
+    {
+      "name": "project_add_ons",
+      "rows": 14
+    },
+    {
+      "name": "project_team_assignments",
+      "rows": 11
+    },
+    {
+      "name": "team_project_payments",
+      "rows": 11
+    },
+    {
+      "name": "team_payment_records",
+      "rows": 5
+    },
+    {
+      "name": "transactions",
+      "rows": 39
+    },
+    {
+      "name": "calendar_events",
+      "rows": 2
+    },
+    {
+      "name": "notifications",
+      "rows": 19
+    },
+    {
+      "name": "client_feedback",
+      "rows": 2
+    },
+    {
+      "name": "galleries",
+      "rows": 1
+    },
+    {
+      "name": "vendor_profiles",
+      "rows": 1
+    },
+    {
+      "name": "vendor_portfolios",
+      "rows": 6
+    },
+    {
+      "name": "wedding_day_checklists",
+      "rows": 20
+    }
+  ]
+}

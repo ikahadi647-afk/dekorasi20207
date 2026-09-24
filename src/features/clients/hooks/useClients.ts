@@ -47,13 +47,32 @@ export const useClients = (
 
     const filteredClientData = useMemo(() => {
         return allClientData.filter(client => {
+            // Search filter - cari di nama, email, phone, whatsapp
             const searchMatch = searchTerm === '' ||
                 client.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
                 client.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                client.phone.toLowerCase().includes(searchTerm.toLowerCase());
+                client.phone.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                (client.whatsapp && client.whatsapp.toLowerCase().includes(searchTerm.toLowerCase()));
 
-            const statusMatch = statusFilter === 'Semua Status' || client.overallPaymentStatus === statusFilter;
+            // Status filter - bisa filter Payment Status atau Client Status
+            const statusMatch = statusFilter === 'Semua Status' || 
+                client.overallPaymentStatus === statusFilter ||
+                client.status === statusFilter;
 
+            // Month filter - filter berdasarkan bulan project atau bulan join client
+            let monthMatch = true;
+            if (monthFilter) {
+                const [filterYear, filterMonth] = monthFilter.split('-').map(Number);
+                monthMatch = client.projects.some(p => {
+                    const projectDate = new Date(p.date);
+                    return projectDate.getFullYear() === filterYear && projectDate.getMonth() + 1 === filterMonth;
+                }) || (() => {
+                    const clientJoinDate = new Date(client.since);
+                    return clientJoinDate.getFullYear() === filterYear && clientJoinDate.getMonth() + 1 === filterMonth;
+                })();
+            }
+
+            // Date range filter - filter berdasarkan tanggal project
             const from = dateFrom ? new Date(dateFrom) : null;
             const to = dateTo ? new Date(dateTo) : null;
             if (from) from.setHours(0, 0, 0, 0);
@@ -61,11 +80,15 @@ export const useClients = (
             const dateMatchRange = (!from && !to) || client.projects.some(p => {
                 const projectDate = new Date(p.date);
                 return (!from || projectDate >= from) && (!to || projectDate <= to);
-            });
+            }) || (() => {
+                // Jika tidak ada project, filter berdasarkan tanggal join client
+                const clientJoinDate = new Date(client.since);
+                return (!from || clientJoinDate >= from) && (!to || clientJoinDate <= to);
+            })();
 
-            return searchMatch && statusMatch && dateMatchRange;
+            return searchMatch && statusMatch && monthMatch && dateMatchRange;
         });
-    }, [allClientData, searchTerm, statusFilter, dateFrom, dateTo]);
+    }, [allClientData, searchTerm, statusFilter, monthFilter, dateFrom, dateTo]);
 
     const clientStats = useMemo(() => {
         const totalReceivables = allClientData.reduce((sum, c) => sum + c.balanceDue, 0);

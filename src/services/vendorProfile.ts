@@ -44,13 +44,18 @@ export const getVendorProfile = async (vendorSlug?: string): Promise<VendorProfi
     };
 
     try {
+        const requestedVendorSlug = vendorSlug || (
+            typeof window !== 'undefined'
+                ? new URLSearchParams(window.location.search).get('vendor') || undefined
+                : undefined
+        );
         let query = supabase
             .from('vendor_profiles')
             .select('*, vendors!inner(slug)')
             .order('created_at', { ascending: true });
 
-        if (vendorSlug) {
-            query = query.eq('vendors.slug', vendorSlug);
+        if (requestedVendorSlug) {
+            query = query.eq('vendors.slug', requestedVendorSlug);
         }
 
         const { data, error } = await query.limit(1).maybeSingle();
